@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Basement Hi-Fi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Chivo:wght@400;700;900&family=VT323&display=swap">
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+/* Layout: full-bleed 3D room on top, a plain control bar underneath for the link, help and the SoundCloud player. */
+:root {
+  color-scheme: dark;
+  --bg: #140c07;
+  --cream: #f3e6c8;
+  --ink: #1a120c;
+  --neon: #ff4fa3;
+  --neon-2: #3fe8ff;
+  --lcd: #ffb347;
+  --muted: #b89a78;
+  --font-body: "Chivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-lcd: "VT323", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--cream); font-family: var(--font-body); overflow-x: hidden; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--neon-2); outline-offset: 3px; }
+
+.room { position: relative; width: 100%; height: min(82vh, 860px); min-height: 460px; background: #0b0604; overflow: hidden; }
+.room canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.room.grab canvas { cursor: grab; }
+.room.grabbing canvas { cursor: grabbing; }
+.room.point canvas { cursor: pointer; }
+
+.tag { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none;
+  background: var(--cream); color: var(--ink); border-radius: 3px; padding: 6px 9px; max-width: 260px;
+  font: 700 14px/1.25 var(--font-body); box-shadow: 0 8px 18px rgba(0,0,0,.5);
+  transform: translate(-50%, calc(-100% - 14px)); opacity: 0; transition: opacity .12s; }
+.tag.show { opacity: 1; }
+.tag em { display: block; font-style: normal; font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #6b5540; }
+
+.hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2;
+  background: rgba(20,12,7,.72); border: 1px solid rgba(243,230,200,.18); border-radius: 999px;
+  padding: 8px 16px; font-size: 13px; letter-spacing: .04em; color: var(--cream); white-space: nowrap;
+  backdrop-filter: blur(6px); transition: opacity .4s; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+.hint b { color: var(--lcd); }
+
+.loading { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: #0b0604;
+  font: 20px/1 var(--font-lcd); color: var(--lcd); letter-spacing: .1em; text-shadow: 0 0 8px rgba(255,179,71,.6); transition: opacity .6s; }
+.loading.done { opacity: 0; pointer-events: none; }
+
+.bar { max-width: 1200px; margin: 0 auto; padding: 22px 16px 36px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+@media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr); } }
+.bar h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.loader { display: flex; gap: 8px; flex-wrap: wrap; }
+.loader input { flex: 1 1 240px; min-width: 0; background: rgba(0,0,0,.45); color: var(--cream);
+  border: 1px solid rgba(243,230,200,.25); border-radius: 4px; padding: 10px 12px; }
+.loader input::placeholder { color: var(--muted); }
+.btn { background: linear-gradient(180deg, #e9e4da, #a9a39a); color: var(--ink); border: 0; border-radius: 4px;
+  padding: 10px 16px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; font-size: 12px;
+  box-shadow: 0 2px 0 #6d675f, inset 0 1px 0 #fff; cursor: pointer; }
+.btn:active { transform: translateY(2px); box-shadow: none; }
+.status { width: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: #ff8a8a; }
+.help { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.help b { color: var(--lcd); font-weight: 700; }
+.opts { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.player-box { background: #1b1714; border-radius: 4px; padding: 8px; box-shadow: inset 0 2px 8px rgba(0,0,0,.8); }
+.player-box iframe { display: block; width: 100%; height: 166px; border: 0; border-radius: 2px; background: #2a2622; }
+.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="room" id="room">
+  <div class="loading" id="loading">WARMING UP THE TUBES…</div>
+  <div class="tag" id="tag"></div>
+  <div class="hint" id="hint"><b>Drag</b> a record from the coffee table onto the turntable · drag the room to look around</div>
+</div>
+
+<section class="bar">
+  <div>
+    <h2>Load a playlist</h2>
+    <form class="loader" id="loader">
+      <input id="url" type="url" required placeholder="https://soundcloud.com/artist/sets/playlist-name" aria-label="SoundCloud playlist link">
+      <button class="btn" type="submit">Stack the table</button>
+      <p class="status" id="status" role="status"></p>
+    </form>
+    <ul class="help">
+      <li><b>Drag a sleeve</b> from the coffee table onto the turntable to play it.</li>
+      <li><b>Click the tonearm</b> to lift the needle, and again to drop it.</li>
+      <li><b>Drag the record off</b> the platter to stop it.</li>
+      <li><b>Drag empty space</b> to look around, scroll or pinch to move closer. The lamp and the blinds click.</li>
+    </ul>
+    <div class="opts"><label><input type="checkbox" id="autochange"> Auto-change: play the next record when one ends</label></div>
+  </div>
+  <div>
+    <h2>Source</h2>
+    <div class="player-box" id="player-host"><iframe title="SoundCloud player" src="about:blank"></iframe></div>
+    <p class="note">Playback runs through SoundCloud's player. Private playlists and tracks with embedding turned off won't load. The 3D room was modelled in Blender.</p>
+  </div>
+</section>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const DEFAULT_URL = "https://soundcloud.com/alumomusic/sets/synthwave";
+const $ = id => document.getElementById(id);
+const els = { room: $("room"), tag: $("tag"), hint: $("hint"), loading: $("loading"), form: $("loader"), url: $("url"),
+  status: $("status"), host: $("player-host"), auto: $("autochange") };
+
+const state = { sounds: [], current: -1, playing: false, widget: null, rel: 0, pos: 0, duration: 0, fillTries: 0,
+  title: "Side A", by: "", lampOn: true, blindsOpen: false };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const art = s => { const u = (s && (s.artwork_url || (s.user && s.user.avatar_url))) || ""; return u ? u.replace("-large.", "-t500x500.") : ""; };
+const fmt = ms => { if (!ms && ms !== 0) return "--:--"; const t = Math.floor(ms / 1000); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+const setStatus = (msg, err) => { els.status.textContent = msg || ""; els.status.classList.toggle("err", !!err); };
+const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+
+/* ================================================================ renderer + scene */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+els.room.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0604);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.12;
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 40);
+camera.position.set(0.55, 1.75, 3.05);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-0.45, 0.85, -0.1);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 1.1; controls.maxDistance = 3.9;
+controls.minPolarAngle = 0.45; controls.maxPolarAngle = 1.38;
+controls.minAzimuthAngle = -0.75; controls.maxAzimuthAngle = 0.75;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.45, 0.92);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// lighting: warm lamp, a pool on the deck, neon spill, lava glow
+scene.add(new THREE.HemisphereLight(0xffd9b0, 0x2a1508, 0.55));
+const lampLight = new THREE.PointLight(0xffb468, 9, 0, 1.6);
+lampLight.castShadow = true; lampLight.shadow.mapSize.set(1024, 1024); lampLight.shadow.bias = -0.002;
+scene.add(lampLight);
+const deckSpot = new THREE.SpotLight(0xfff0dc, 14, 0, 0.42, 0.7, 1.4);
+deckSpot.castShadow = true; deckSpot.shadow.mapSize.set(1024, 1024); deckSpot.shadow.bias = -0.0005;
+scene.add(deckSpot, deckSpot.target);
+const tableSpot = new THREE.SpotLight(0xffe2c0, 9, 0, 0.5, 0.8, 1.4);
+tableSpot.castShadow = true; tableSpot.shadow.mapSize.set(1024, 1024);
+scene.add(tableSpot, tableSpot.target);
+const neonLight = new THREE.PointLight(0xff4fa3, 2.2, 0, 1.8);
+const lavaLight = new THREE.PointLight(0xff6a3d, 1.2, 0, 2);
+scene.add(neonLight, lavaLight);
+
+/* ================================================================ canvas textures: neon sign + receiver display */
+function canvasTex(w, h) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; t.anisotropy = 4;
+  return { c, g: c.getContext("2d"), t };
+}
+const neon = canvasTex(2048, 700);
+function drawNeon() {
+  const { g, c, t } = neon;
+  g.clearRect(0, 0, c.width, c.height);
+  const title = state.title;
+  let size = 190;
+  g.font = `${size}px Monoton`;
+  while (g.measureText(title).width > c.width - 140 && size > 60) { size -= 6; g.font = `${size}px Monoton`; }
+  const lines = [title];
+  if (g.measureText(title).width > c.width - 140) { // split long titles onto two lines
+    const words = title.split(" "), half = Math.ceil(words.length / 2);
+    lines.splice(0, 1, words.slice(0, half).join(" "), words.slice(half).join(" "));
+    while (Math.max(...lines.map(l => g.measureText(l).width)) > c.width - 140 && size > 50) { size -= 6; g.font = `${size}px Monoton`; }
+  }
+  g.textAlign = "center"; g.textBaseline = "middle";
+  const top = c.height / 2 - 60 - (lines.length - 1) * size * 0.55;
+  for (const [pass, blur, col] of [[0, 40, "#ff4fa3"], [1, 16, "#ff7bbd"], [2, 0, "#ffe6f2"]]) {
+    g.shadowColor = "#ff4fa3"; g.shadowBlur = blur; g.fillStyle = col;
+    lines.forEach((l, k) => g.fillText(l, c.width / 2, top + k * size * 1.1));
+  }
+  g.font = "700 54px Chivo"; g.letterSpacing = "18px";
+  g.shadowColor = "#3fe8ff"; g.shadowBlur = 18; g.fillStyle = "#bff7ff";
+  g.fillText((state.by ? "SELECTED BY " + state.by : "NOW PLAYING IN THE BASEMENT").toUpperCase(), c.width / 2, c.height - 90);
+  g.letterSpacing = "0px";
+  t.needsUpdate = true;
+}
+
+const vfd = canvasTex(1024, 274);
+let marquee = 0, vu = [0, 0];
+function drawVfd(dt) {
+  const { g, c, t } = vfd;
+  g.fillStyle = "#c9c3b8"; g.fillRect(0, 0, c.width, c.height);             // brushed faceplate
+  g.fillStyle = "#0e0704"; roundRect(g, 18, 22, 690, 230, 10); g.fill();       // display window
+  g.save(); g.beginPath(); g.rect(34, 30, 658, 214); g.clip();
+  g.fillStyle = "#ffb347"; g.shadowColor = "rgba(255,179,71,.85)"; g.shadowBlur = 14;
+  g.font = "92px VT323"; g.textBaseline = "top";
+  const s = state.sounds[state.current];
+  const line1 = s ? ((s.user && s.user.username ? s.user.username + " - " : "") + (s.title || "")).toUpperCase() : "NO RECORD";
+  const w1 = g.measureText(line1).width;
+  if (s && w1 > 640) { marquee = (marquee + dt * 90) % (w1 + 120); g.fillText(line1, 40 - marquee, 44); g.fillText(line1, 40 - marquee + w1 + 120, 44); }
+  else { marquee = 0; g.fillText(line1, 40, 44); }
+  g.font = "70px VT323"; g.globalAlpha = .85;
+  const time = s ? (state.finished ? "END OF SIDE" : fmt(state.pos) + " / " + fmt(state.duration)) : "--:-- / --:--";
+  g.fillText(time, 40, 150);
+  g.textAlign = "right"; g.fillText(s ? "TRK " + String(state.current + 1).padStart(2, "0") : "TRK --", 680, 150); g.textAlign = "left";
+  g.restore(); g.globalAlpha = 1; g.shadowBlur = 0;
+  // VU meters
+  const target = state.playing ? [0.55 + Math.random() * .35, 0.5 + Math.random() * .4] : [0, 0];
+  for (let k = 0; k < 2; k++) {
+    vu[k] = damp(vu[k], target[k], state.playing ? 14 : 5, dt);
+    const x = 728 + k * 144;
+    g.fillStyle = "#f6e6b8"; roundRect(g, x, 26, 130, 222, 8); g.fill();
+    g.strokeStyle = "#5a3a20"; g.lineWidth = 4; g.beginPath(); g.arc(x + 65, 200, 100, Math.PI * 1.22, Math.PI * 1.78); g.stroke();
+    g.strokeStyle = "#b21e1e"; g.beginPath(); g.arc(x + 65, 200, 100, Math.PI * 1.62, Math.PI * 1.78); g.stroke();
+    const a = Math.PI * (1.22 + 0.56 * vu[k]);
+    g.strokeStyle = "#1a120c"; g.lineWidth = 4; g.beginPath(); g.moveTo(x + 65, 222); g.lineTo(x + 65 + Math.cos(a) * 150, 222 + Math.sin(a) * 150); g.stroke();
+    g.fillStyle = "#5a3a20"; g.font = "700 28px Chivo"; g.textAlign = "center"; g.fillText("VU", x + 65, 214); g.textAlign = "left";
+  }
+  t.needsUpdate = true;
+}
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+
+/* ================================================================ load the Blender room */
+const N = {};           // named nodes from the GLB
+const sleeves = [];     // { i, group, mesh, home: Vector3, homeRot, lift }
+const texLoader = new THREE.TextureLoader(); texLoader.setCrossOrigin("anonymous");
+const coverCache = new Map();
+const tmpV = new THREE.Vector3();
+let deck = { center: new THREE.Vector3(), y: 0 }, arm = { rest: 0, outer: -0.5, inner: -0.8, angle: 0, target: 0 };
+
+const gltf = await new GLTFLoader().loadAsync("assets/basement.glb");
+const room = gltf.scene;
+scene.add(room);
+room.traverse(o => {
+  N[o.name] = o;
+  if (o.isMesh) {
+    o.castShadow = !/Wall|Floor|Ceiling|Rug|Neon|Window|Screen/.test(o.name);
+    o.receiveShadow = true;
+    if (o.material.map) o.material.map.anisotropy = 8;
+  }
+});
+room.updateMatrixWorld(true);
+
+// emissive bits read hotter so bloom picks them up
+for (const n of ["LampShade", "LavaGlass", "WindowView"]) if (N[n]) N[n].material.emissiveIntensity = n === "WindowView" ? 0.9 : 2.2;
+N.NeonScreen.material = new THREE.MeshBasicMaterial({ map: neon.t, transparent: true, toneMapped: false, depthWrite: false });
+N.ReceiverScreen.material = new THREE.MeshStandardMaterial({ map: vfd.t, emissiveMap: vfd.t, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: .4 });
+N.DropRing.visible = false;
+N.DropRing.material = N.DropRing.material.clone(); N.DropRing.material.transparent = true;
+N.Record.visible = false;
+N.RecordLabel.material = N.RecordLabel.material.clone();
+
+// light placement from the model
+const wp = (n, v = new THREE.Vector3()) => N[n].getWorldPosition(v);
+lampLight.position.copy(wp("LampShade")).add(new THREE.Vector3(0, -0.05, 0));
+lavaLight.position.copy(wp("LavaGlass")).add(new THREE.Vector3(0, 0, 0.25));
+neonLight.position.copy(wp("NeonScreen")).add(new THREE.Vector3(0, -0.1, 0.6));
+wp("Platter", deck.center); deck.y = deck.center.y + 0.02;
+deckSpot.position.copy(deck.center).add(new THREE.Vector3(0.25, 2.0, 0.7)); deckSpot.target.position.copy(deck.center);
+const tableCenter = wp("TableTop");
+tableSpot.position.copy(tableCenter).add(new THREE.Vector3(0.3, 2.1, 0.6)); tableSpot.target.position.copy(tableCenter);
+
+// tonearm: work out the swing angles from the real geometry
+{
+  const pivot = N.TonearmPivot, base = pivot.rotation.y, stylus = N.Stylus;
+  const distAt = th => { pivot.rotation.y = base + th; pivot.updateMatrixWorld(true); stylus.getWorldPosition(tmpV); return Math.hypot(tmpV.x - deck.center.x, tmpV.z - deck.center.z); };
+  const find = (r, sign) => { for (let th = 0; Math.abs(th) < 1.6; th += sign * 0.002) if (distAt(th) <= r) return th; return null; };
+  const sign = distAt(0.1) < distAt(-0.1) ? 1 : -1;
+  arm.outer = find(0.143, sign) ?? sign * 0.45;
+  arm.inner = find(0.062, sign) ?? sign * 0.75;
+  arm.rest = 0; arm.base = base;
+  distAt(0);
+}
+
+drawVfd(0);
+await document.fonts.load("190px Monoton").catch(() => {});
+drawNeon();
+
+/* ================================================================ record sleeves on the coffee table */
+const SLEEVE = 0.315;
+const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: .8 });
+const backMat = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: .8 });
+const sleeveGeo = new THREE.BoxGeometry(SLEEVE, 0.005, SLEEVE);
+
+function coverTexture(i) {
+  const s = state.sounds[i], url = art(s);
+  if (url) {
+    if (!coverCache.has(url)) {
+      const t = texLoader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+      coverCache.set(url, t);
+    }
+    return coverCache.get(url);
+  }
+  // no artwork yet: paint a coloured sleeve with the title
+  const { c, g, t } = canvasTex(256, 256); t.flipY = true;
+  const h = (i * 47) % 360;
+  const grd = g.createLinearGradient(0, 0, 256, 256); grd.addColorStop(0, `hsl(${h} 70% 58%)`); grd.addColorStop(1, `hsl(${h + 40} 70% 36%)`);
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = "#1a120c"; g.font = "900 22px Chivo"; g.fillText((s && s.title) || "Loading…", 14, 230, 228);
+  return t;
+}
+
+function clearSleeves() { for (const s of sleeves) s.group.removeFromParent(); sleeves.length = 0; }
+
+function renderTable() {
+  clearSleeves();
+  const n = state.sounds.length;
+  if (!n) return;
+  const anchors = [0, 1, 2, 3, 4, 5].map(k => N["PileAnchor_" + k]).filter(Boolean);
+  const pileCount = Math.min(anchors.length, Math.max(1, Math.ceil(n / 4)));
+  const per = Math.ceil(n / pileCount);
+  // back row first so front piles overlap them naturally
+  const order = [0, 1, 2, 3, 4, 5].slice(0, pileCount);
+  order.forEach((a, p) => {
+    const anchor = anchors[a].getWorldPosition(new THREE.Vector3());
+    const items = state.sounds.slice(p * per, p * per + per);
+    const m = items.length;
+    const step = m > 1 ? Math.min(0.03, 0.09 / (m - 1)) : 0;
+    items.forEach((s, j) => {
+      const i = p * per + j;
+      const mesh = new THREE.Mesh(sleeveGeo, [edgeMat, edgeMat, new THREE.MeshStandardMaterial({ map: coverTexture(i), roughness: .55 }), backMat, edgeMat, edgeMat]);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      const group = new THREE.Group(); group.add(mesh);
+      const home = anchor.clone().add(new THREE.Vector3(-0.045 + j * step, 0.003 + j * 0.0056, -0.03 + j * step * 0.7));
+      const homeRot = (((i * 53) % 13) - 6) * 0.03;
+      group.position.copy(home); group.rotation.y = homeRot;
+      scene.add(group);
+      const rec = { i, group, mesh, home, homeRot, lift: 0, target: null };
+      mesh.userData.sleeve = rec;
+      sleeves.push(rec);
+    });
+  });
+  markTable();
+}
+function markTable() {
+  for (const s of sleeves) {
+    const on = s.i === state.current;
+    s.mesh.material[2].transparent = on; s.mesh.material[2].opacity = on ? 0.35 : 1;
+  }
+}
+
+/* ================================================================ SoundCloud */
+async function loadPlaylist(url) {
+  setStatus("Pulling records from SoundCloud…");
+  takeOffDeck(true);
+  state.sounds = []; state.fillTries = 0;
+  renderTable();
+  let widgetSrc = url;
+  try {
+    const r = await fetch("https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(url));
+    if (!r.ok) throw new Error(r.status);
+    const o = await r.json();
+    const m = (o.title || "").match(/^(.*) by (.*)$/);
+    state.title = m ? m[1] : (o.title || "Side A");
+    state.by = o.author_name || (m && m[2]) || "";
+    const src = (o.html || "").match(/src="([^"]+)"/);
+    if (src) { const inner = new URL(src[1].replace(/&amp;/g, "&")).searchParams.get("url"); if (inner) widgetSrc = inner; }
+  } catch {
+    setStatus("Couldn't find that playlist. Check the link is public and starts with https://soundcloud.com/", true);
+    return;
+  }
+  drawNeon();
+  document.title = state.title + " · Basement Hi-Fi";
+
+  const params = new URLSearchParams({ url: widgetSrc, auto_play: "false", visual: "false", color: "#ff4fa3", hide_related: "true",
+    show_comments: "false", show_reposts: "false", show_teaser: "false", sharing: "false", buying: "false", download: "false" });
+  els.host.innerHTML = "";
+  const iframe = document.createElement("iframe");
+  iframe.title = "SoundCloud player"; iframe.allow = "autoplay; encrypted-media";
+  iframe.src = "https://w.soundcloud.com/player/?" + params;
+  els.host.appendChild(iframe);
+  const w = SC.Widget(iframe), E = SC.Widget.Events;
+  state.widget = w;
+  w.bind(E.READY, () => fetchSounds());
+  w.bind(E.PLAY, onPlay);
+  w.bind(E.PAUSE, () => setPlaying(false));
+  w.bind(E.FINISH, onFinish);
+  w.bind(E.ERROR, () => setStatus("SoundCloud couldn't play that track. It may be blocked from embedding.", true));
+  w.bind(E.PLAY_PROGRESS, p => {
+    state.rel = p.relativePosition || 0; state.pos = p.currentPosition || 0;
+    if (state.current >= 0 && state.playing) arm.target = armAt(state.rel);
+  });
+  store.set("vinylroom:url", url);
+}
+
+function fetchSounds() {
+  const w = state.widget;
+  w.getSounds(list => {
+    if (state.widget !== w) return;
+    state.sounds = list || [];
+    const missing = state.sounds.filter(s => !s.title).length;
+    if (!state.sounds.length) {
+      if (state.fillTries++ < 12) { setTimeout(() => state.widget === w && fetchSounds(), 700); return; }
+      setStatus("SoundCloud found this playlist but won't hand over its tracks. It's empty, private, or the uploader turned off embedding. Try another link.", true);
+      return;
+    }
+    renderTable();
+    setStatus(missing ? `Loading sleeve art… ${state.sounds.length - missing} of ${state.sounds.length}` : `${state.sounds.length} records on the table.`);
+    if (missing && state.fillTries++ < 20) setTimeout(() => state.widget === w && fetchSounds(), 1500);
+  });
+}
+
+const armAt = rel => arm.outer + (arm.inner - arm.outer) * rel;
+const rec = { y: 0, targetY: 0, spin: 0, speed: 0, dragging: false, pos: new THREE.Vector3(), target: null };
+
+function putOnDeck(i) {
+  if (!state.widget || !state.sounds[i]) return;
+  state.current = i; state.rel = 0; state.pos = 0; state.finished = false;
+  state.duration = state.sounds[i].duration || 0;
+  const lab = N.RecordLabel.material;
+  const t = coverTexture(i).clone(); t.flipY = false; t.needsUpdate = true;
+  lab.map = t; lab.color.set(0xffffff); lab.needsUpdate = true;
+  N.Record.visible = true;
+  rec.y = 0.35; rec.targetY = 0;         // lowers onto the spindle
+  rec.dragging = false; rec.target = null;
+  N.Record.position.x = rec.home.x; N.Record.position.z = rec.home.z;
+  markTable();
+  els.hint.style.opacity = 0;
+  setTimeout(() => {
+    if (state.current !== i) return;
+    arm.target = arm.outer;
+    state.widget.skip(i);
+    setTimeout(() => state.current === i && state.widget.play(), 350);
+  }, 650);
+}
+
+function takeOffDeck(silent) {
+  if (state.widget && !silent) state.widget.pause();
+  state.current = -1; state.rel = 0; state.finished = false;
+  N.Record && (N.Record.visible = false);
+  arm.target = arm.rest;
+  setPlaying(false);
+  markTable();
+}
+
+function setPlaying(on) {
+  state.playing = on;
+  if (N.PowerLight) { N.PowerLight.material.emissive = new THREE.Color(on ? 0xff2020 : 0x000000); N.PowerLight.material.emissiveIntensity = 3; }
+}
+
+function onPlay() {
+  state.widget.getCurrentSoundIndex(idx => {
+    if (idx !== state.current) {
+      if (els.auto.checked && state.current >= 0 && state.sounds[idx]) { // record changer
+        putOnDeck(idx); return;
+      }
+      state.widget.pause(); return;
+    }
+    state.widget.getCurrentSound(s => { if (s && s.duration) state.duration = s.duration; });
+    state.finished = false;
+    setPlaying(true);
+    arm.target = armAt(state.rel);
+  });
+}
+function onFinish() { setPlaying(false); if (!els.auto.checked) { arm.target = arm.rest; state.finished = true; } }
+
+function toggleNeedle() {
+  if (!state.widget || state.current < 0) return;
+  if (state.playing) { state.widget.pause(); arm.target = arm.rest; }
+  else { arm.target = armAt(state.rel); state.widget.play(); }
+}
+
+/* ================================================================ picking + drag */
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+let drag = null, hover = null;
+
+function setNdc(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+}
+function pick() {
+  const targets = [...sleeves.map(s => s.mesh), N.TonearmPivot, N.FloorLamp, N.Window];
+  if (N.Record.visible) targets.push(N.Record);
+  const hit = ray.intersectObjects(targets, true)[0];
+  if (!hit) return null;
+  let o = hit.object;
+  if (o.userData.sleeve) return { kind: "sleeve", sleeve: o.userData.sleeve, point: hit.point };
+  while (o) {
+    if (o === N.Record) return { kind: "record", point: hit.point };
+    if (o === N.TonearmPivot) return { kind: "arm" };
+    if (o === N.FloorLamp) return { kind: "lamp" };
+    if (o === N.Window) return { kind: "window" };
+    o = o.parent;
+  }
+  return null;
+}
+const overDeck = p => Math.hypot(p.x - deck.center.x, p.z - deck.center.z) < 0.27;
+
+function planePoint() {
+  const p = new THREE.Vector3();
+  return ray.ray.intersectPlane(dragPlane, p) ? p : null;
+}
+
+renderer.domElement.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  setNdc(e);
+  const h = pick();
+  if (!h) return;
+  controls.enabled = false;            // our listener runs first (capture), so orbit never starts
+  drag = { h, x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId };
+  renderer.domElement.setPointerCapture(e.pointerId);
+}, { capture: true });
+
+renderer.domElement.addEventListener("pointermove", e => {
+  setNdc(e);
+  if (!drag) { updateHover(e); return; }
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5) return;
+  const { h } = drag;
+  if (!drag.moved) {
+    drag.moved = true;
+    hideTag();
+    els.room.classList.add("grabbing");
+    if (h.kind === "record") { rec.dragging = true; arm.target = arm.rest; if (state.playing) state.widget.pause(); }
+  }
+  if (h.kind !== "sleeve" && h.kind !== "record") return;
+  dragPlane.constant = -(deck.y + 0.16);
+  const p = planePoint(); if (!p) return;
+  if (h.kind === "sleeve") h.sleeve.target = p;
+  else rec.target = p;
+  const hot = overDeck(p);
+  N.DropRing.visible = h.kind === "sleeve" && hot;
+});
+
+function endDrag(e) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  controls.enabled = true;
+  els.room.classList.remove("grabbing");
+  N.DropRing.visible = false;
+  if (!d.moved) { // a click
+    if (d.h.kind === "arm") toggleNeedle();
+    else if (d.h.kind === "lamp") state.lampOn = !state.lampOn;
+    else if (d.h.kind === "window") state.blindsOpen = !state.blindsOpen;
+    else if (d.h.kind === "record") toggleNeedle();
+    return;
+  }
+  setNdc(e);
+  dragPlane.constant = -(deck.y + 0.16);
+  const p = planePoint();
+  const hot = p && overDeck(p);
+  if (d.h.kind === "sleeve") {
+    d.h.sleeve.target = null;           // sleeve always goes back to its pile
+    if (hot) { rec.home = deck.center.clone(); putOnDeck(d.h.sleeve.i); }
+  } else if (d.h.kind === "record") {
+    rec.dragging = false; rec.target = null;
+    if (hot) { if (state.current >= 0) { arm.target = armAt(state.rel); state.widget.play(); } }
+    else takeOffDeck();
+  }
+}
+renderer.domElement.addEventListener("pointerup", endDrag);
+renderer.domElement.addEventListener("pointercancel", endDrag);
+renderer.domElement.addEventListener("dblclick", e => { setNdc(e); const h = pick(); if (h && h.kind === "sleeve") { rec.home = deck.center.clone(); putOnDeck(h.sleeve.i); } });
+
+function updateHover(e) {
+  const h = pick();
+  hover = h && h.kind === "sleeve" ? h.sleeve : null;
+  els.room.classList.toggle("grab", !!h && (h.kind === "sleeve" || h.kind === "record"));
+  els.room.classList.toggle("point", !!h && (h.kind === "arm" || h.kind === "lamp" || h.kind === "window"));
+  if (hover) showTag(hover); else hideTag();
+}
+function showTag(sl) {
+  const s = state.sounds[sl.i]; if (!s) return;
+  els.tag.innerHTML = "";
+  const em = document.createElement("em"); em.textContent = (s.user && s.user.username) || "Track " + (sl.i + 1);
+  els.tag.append(em, document.createTextNode(s.title || "Loading…"));
+  els.tag.classList.add("show");
+  els.tag.dataset.i = sl.i;
+}
+const hideTag = () => { els.tag.classList.remove("show"); delete els.tag.dataset.i; };
+
+/* ================================================================ loop */
+const clock = new THREE.Clock();
+rec.home = deck.center.clone();
+let vfdTimer = 0;
+// Frame the table + console for whatever shape the screen is
+const VIEW_DIR = new THREE.Vector3(0.26, 0.4, 1).normalize();
+let framed = false;
+function resize() {
+  const w = els.room.clientWidth, h = els.room.clientHeight, aspect = w / h;
+  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h);
+  camera.aspect = aspect;
+  camera.fov = aspect < 0.8 ? 58 : 44;
+  camera.updateProjectionMatrix();
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2, hf = Math.atan(Math.tan(vf) * aspect);
+  const needW = aspect < 0.8 ? 2.4 : 3.2, needH = 2.3;
+  const dist = Math.max((needW / 2) / Math.tan(hf), (needH / 2) / Math.tan(vf));
+  controls.maxDistance = Math.max(dist * 1.2, 3.2);
+  if (!framed) { camera.position.copy(controls.target).addScaledVector(VIEW_DIR, dist); framed = true; }
+}
+addEventListener("resize", resize); resize();
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  controls.update();
+
+  // sleeves: hover lift, follow drag target, glide home
+  for (const s of sleeves) {
+    const lifted = s === hover && !drag ? 0.05 : 0;
+    s.lift = damp(s.lift, lifted, 12, dt);
+    const goal = s.target ? s.target : tmpV.copy(s.home).setY(s.home.y + s.lift);
+    s.group.position.x = damp(s.group.position.x, goal.x, s.target ? 18 : 9, dt);
+    s.group.position.y = damp(s.group.position.y, goal.y, s.target ? 18 : 9, dt);
+    s.group.position.z = damp(s.group.position.z, goal.z, s.target ? 18 : 9, dt);
+    s.group.rotation.y = damp(s.group.rotation.y, s.target ? 0 : s.homeRot, 8, dt);
+    s.group.rotation.x = damp(s.group.rotation.x, s.target ? 0.5 : 0, 8, dt);   // tilt towards you while carried
+  }
+
+  // record: drop onto spindle, spin at 33 1/3, follow the hand when dragged
+  if (N.Record.visible) {
+    const r = N.Record;
+    if (rec.dragging && rec.target) {
+      r.position.x = damp(r.position.x, rec.target.x, 18, dt);
+      r.position.z = damp(r.position.z, rec.target.z, 18, dt);
+      rec.y = damp(rec.y, 0.16, 12, dt);
+    } else {
+      r.position.x = damp(r.position.x, rec.home.x, 10, dt);
+      r.position.z = damp(r.position.z, rec.home.z, 10, dt);
+      rec.y = damp(rec.y, 0, 7, dt);
+    }
+    r.position.y = rec.baseY + rec.y;
+    rec.speed = damp(rec.speed, state.playing ? (Math.PI * 2) / 1.8 : 0, state.playing ? 3 : 1.6, dt);
+    r.rotation.y -= rec.speed * dt;
+  }
+
+  // tonearm
+  arm.angle = damp(arm.angle, arm.target, state.playing ? 3 : 2.2, dt);
+  N.TonearmPivot.rotation.y = arm.base + arm.angle;
+
+  // woofers pump, lava light breathes, lamp + blinds
+  const beat = state.playing ? Math.max(0, Math.sin(t * Math.PI * 2 * 2.1)) ** 4 : 0;
+  for (const n of ["Woofer_L_1", "Woofer_L_2", "Woofer_R_1", "Woofer_R_2"]) if (N[n]) N[n].scale.setScalar(1 + beat * 0.05);
+  lavaLight.intensity = 1.1 + Math.sin(t * 0.7) * 0.25;
+  lampLight.intensity = damp(lampLight.intensity, state.lampOn ? 9 : 0, 6, dt);
+  N.LampShade.material.emissiveIntensity = damp(N.LampShade.material.emissiveIntensity, state.lampOn ? 2.2 : 0.05, 6, dt);
+  N.Blinds.scale.y = damp(N.Blinds.scale.y, state.blindsOpen ? 0.14 : 1, 5, dt);
+  neonLight.intensity = 2.2 * (Math.random() > 0.996 ? 0.4 : 1);
+
+  // hover tag follows its sleeve on screen
+  if (els.tag.dataset.i !== undefined) {
+    const s = sleeves.find(x => x.i === +els.tag.dataset.i);
+    if (s) {
+      s.group.getWorldPosition(tmpV).project(camera);
+      els.tag.style.left = ((tmpV.x + 1) / 2) * els.room.clientWidth + "px";
+      els.tag.style.top = ((1 - tmpV.y) / 2) * els.room.clientHeight + "px";
+    }
+  }
+
+  vfdTimer += dt;
+  if (vfdTimer > 1 / 30) { drawVfd(vfdTimer); vfdTimer = 0; }
+  composer.render();
+});
+rec.baseY = N.Record.position.y;
+els.loading.classList.add("done");
+
+/* ================================================================ boot */
+els.form.addEventListener("submit", e => {
+  e.preventDefault();
+  const url = els.url.value.trim();
+  if (!/^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i.test(url)) {
+    setStatus("That doesn't look like a SoundCloud link. It should start with https://soundcloud.com/", true);
+    return;
+  }
+  loadPlaylist(url);
+});
+const qs = new URLSearchParams(location.search).get("url");
+const start = qs || store.get("vinylroom:url") || DEFAULT_URL;
+els.url.value = start;
+loadPlaylist(start);
+window.__room = { N, state, sleeves, deck, arm, camera, controls, putOnDeck, pick, setNdc };  // for debugging in the console
+</script>
+</body>
+</html>

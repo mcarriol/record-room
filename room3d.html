@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Record Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;700;900&family=VT323&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap">
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+/* Layout: full-bleed 3D room, plain control bar underneath. Palette pulled from the room itself: periwinkle + lacquer pink. */
+:root {
+  color-scheme: light;
+  --wall: #6784c4;
+  --wall-deep: #3e5794;
+  --pink: #e8879f;
+  --pink-ink: #7a2a44;
+  --cream: #f6eee8;
+  --ink: #1f1a2e;
+  --muted: #d7defa;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Chivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-lcd: "VT323", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--wall-deep); color: var(--cream); font-family: var(--font-body); overflow-x: hidden; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
+
+.room { position: relative; width: 100%; height: min(84vh, 900px); min-height: 480px; background: var(--wall); overflow: hidden; }
+.room canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.room.grab canvas { cursor: grab; }
+.room.grabbing canvas { cursor: grabbing; }
+.room.point canvas { cursor: pointer; }
+
+/* the title card that rises with a record as you pull it */
+.tag { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none;
+  width: max-content; max-width: min(300px, 70vw);
+  background: var(--cream); color: var(--ink); border-radius: 6px; padding: 10px 14px 11px;
+  box-shadow: 0 14px 30px rgba(31,26,46,.35);
+  transform: translate(-50%, calc(-100% - 16px)) scale(.92); transform-origin: 50% 100%;
+  opacity: 0; transition: opacity .15s, transform .15s; }
+.tag.show { opacity: 1; transform: translate(-50%, calc(-100% - 16px)) scale(1); }
+.tag em { display: block; font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--pink-ink); }
+.tag strong { display: block; font: 900 20px/1.12 var(--font-display); margin-top: 3px; text-wrap: balance; }
+.tag small { display: block; margin-top: 7px; font-size: 12px; color: #6a6480; }
+.tag .meter { height: 3px; margin-top: 8px; background: #e7dfe6; border-radius: 2px; overflow: hidden; }
+.tag .meter i { display: block; height: 100%; width: 0; background: var(--pink); }
+
+.hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2;
+  background: rgba(31,26,46,.62); border-radius: 999px; padding: 8px 16px; font-size: 13px; color: var(--cream);
+  white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis;
+  backdrop-filter: blur(6px); transition: opacity .4s; }
+.hint b { color: #ffc6d5; }
+
+.loading { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: var(--wall);
+  font: 900 22px/1 var(--font-display); color: var(--cream); letter-spacing: .02em; transition: opacity .6s; }
+.loading.done { opacity: 0; pointer-events: none; }
+
+.bar { max-width: 1200px; margin: 0 auto; padding: 22px 16px 36px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+@media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr); } }
+.bar h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.loader { display: flex; gap: 8px; flex-wrap: wrap; }
+.loader input { flex: 1 1 240px; min-width: 0; background: rgba(255,255,255,.12); color: var(--cream);
+  border: 1px solid rgba(246,238,232,.35); border-radius: 6px; padding: 10px 12px; }
+.loader input::placeholder { color: var(--muted); }
+.btn { background: var(--pink); color: var(--ink); border: 0; border-radius: 6px; padding: 10px 16px;
+  font-weight: 900; letter-spacing: .1em; text-transform: uppercase; font-size: 12px;
+  box-shadow: 0 3px 0 #b85a74; cursor: pointer; }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #b85a74; }
+.status { width: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: #ffd0d0; font-weight: 700; }
+.help { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.help b { color: #ffc6d5; }
+.opts { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.player-box { background: rgba(31,26,46,.35); border-radius: 6px; padding: 8px; }
+.player-box iframe { display: block; width: 100%; height: 166px; border: 0; border-radius: 3px; background: #2a2640; }
+.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="room" id="room">
+  <div class="loading" id="loading">Dusting the shelves…</div>
+  <div class="tag" id="tag"><em id="tag-artist"></em><strong id="tag-title"></strong><small id="tag-hint"></small><div class="meter"><i id="tag-meter"></i></div></div>
+  <div class="hint" id="hint"><b>Pull</b> a record from the shelf (drag it down towards you) · drop it on the turntable</div>
+</div>
+
+<section class="bar">
+  <div>
+    <h2>Load a playlist</h2>
+    <form class="loader" id="loader">
+      <input id="url" type="url" required placeholder="https://soundcloud.com/artist/sets/playlist-name" aria-label="SoundCloud playlist link">
+      <button class="btn" type="submit">Fill the shelves</button>
+      <p class="status" id="status" role="status"></p>
+    </form>
+    <ul class="help">
+      <li><b>Grab a spine</b> on the eye-level shelf and drag down to pull it out. The title comes up as it slides.</li>
+      <li><b>Keep pulling</b> until it's free, then carry it to the turntable on the coffee table.</li>
+      <li><b>Click the tonearm</b> to lift the needle, and again to drop it. <b>Drag the record off</b> to stop.</li>
+      <li><b>Drag empty space</b> to look around, scroll or pinch to move closer.</li>
+    </ul>
+    <div class="opts"><label><input type="checkbox" id="autochange"> Auto-change: play the next record when one ends</label></div>
+  </div>
+  <div>
+    <h2>Source</h2>
+    <div class="player-box" id="player-host"><iframe title="SoundCloud player" src="about:blank"></iframe></div>
+    <p class="note">Playback runs through SoundCloud's player. Private playlists and tracks with embedding turned off won't load. The room is modelled in Blender.</p>
+  </div>
+</section>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const DEFAULT_URL = "https://soundcloud.com/alumomusic/sets/synthwave";
+const $ = id => document.getElementById(id);
+const els = { room: $("room"), tag: $("tag"), tagArtist: $("tag-artist"), tagTitle: $("tag-title"), tagHint: $("tag-hint"), tagMeter: $("tag-meter"),
+  hint: $("hint"), loading: $("loading"), form: $("loader"), url: $("url"), status: $("status"), host: $("player-host"), auto: $("autochange") };
+
+const state = { sounds: [], current: -1, playing: false, finished: false, widget: null, rel: 0, pos: 0, duration: 0, fillTries: 0, title: "Record Room", by: "" };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const art = s => { const u = (s && (s.artwork_url || (s.user && s.user.avatar_url))) || ""; return u ? u.replace("-large.", "-t500x500.") : ""; };
+const fmt = ms => { if (!ms && ms !== 0) return "--:--"; const t = Math.floor(ms / 1000); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+const setStatus = (msg, err) => { els.status.textContent = msg || ""; els.status.classList.toggle("err", !!err); };
+const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+const rand = (seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(1987);
+
+/* ================================================================ renderer, scene, light */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+els.room.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x6784c4);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+
+// flat, even studio light like the reference photo
+scene.add(new THREE.HemisphereLight(0xeef0ff, 0xc9a3b5, 1.25));
+const key = new THREE.DirectionalLight(0xfff3ea, 1.9);
+key.position.set(1.8, 4.2, 5.5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -4.5, right: 4.5, top: 3.5, bottom: -2.5, near: 0.5, far: 16 });
+key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xdfe6ff, 0.6);
+fill.position.set(-4, 2.5, 3);
+scene.add(fill);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 40);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.12, -0.35);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 0.9;
+controls.minPolarAngle = 0.95; controls.maxPolarAngle = 1.5;
+controls.minAzimuthAngle = -0.6; controls.maxAzimuthAngle = 0.6;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.4, 0.96);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* ================================================================ load the Blender room */
+const N = {};
+const gltf = await new GLTFLoader().loadAsync("assets/room.glb");
+scene.add(gltf.scene);
+gltf.scene.traverse(o => {
+  N[o.name] = o;
+  if (o.isMesh) {
+    o.castShadow = !/Wall|Floor|Ceiling|Rug|Screen|Picture/.test(o.name);
+    o.receiveShadow = true;
+    if (o.material.map) o.material.map.anisotropy = 8;
+  }
+});
+gltf.scene.updateMatrixWorld(true);
+const tmpV = new THREE.Vector3();
+const wp = (n, v = new THREE.Vector3()) => N[n].getWorldPosition(v);
+
+N.DropRing.visible = false;
+N.Record.visible = false;
+N.RecordLabel.material = N.RecordLabel.material.clone();
+const deck = { center: wp("Platter"), y: 0 };
+deck.y = deck.center.y + 0.02;
+
+// tonearm swing angles from the real geometry
+const arm = { rest: 0, outer: -0.5, inner: -0.8, angle: 0, target: 0, base: N.TonearmPivot.rotation.y };
+{
+  const pivot = N.TonearmPivot, stylus = N.Stylus;
+  const distAt = th => { pivot.rotation.y = arm.base + th; pivot.updateMatrixWorld(true); stylus.getWorldPosition(tmpV); return Math.hypot(tmpV.x - deck.center.x, tmpV.z - deck.center.z); };
+  const find = (r, sign) => { for (let th = 0; Math.abs(th) < 1.6; th += sign * 0.002) if (distAt(th) <= r) return th; return null; };
+  const sign = distAt(0.1) < distAt(-0.1) ? 1 : -1;
+  arm.outer = find(0.143, sign) ?? sign * 0.45;
+  arm.inner = find(0.062, sign) ?? sign * 0.75;
+  distAt(0);
+}
+const armAt = rel => arm.outer + (arm.inner - arm.outer) * rel;
+
+/* ================================================================ canvases: TV screen, spines */
+function canvasTex(w, h, flipY = false) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.flipY = flipY; t.anisotropy = 8;
+  return { c, g: c.getContext("2d"), t };
+}
+const tv = canvasTex(800, 600);
+N.TVScreen.material = new THREE.MeshStandardMaterial({ map: tv.t, emissiveMap: tv.t, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.12, metalness: 0 });
+const coverImages = new Map();   // url -> HTMLImageElement (for the TV + spine colours)
+function coverImage(url) {
+  if (!url) return null;
+  if (!coverImages.has(url)) { const im = new Image(); im.crossOrigin = "anonymous"; im.src = url; coverImages.set(url, im); }
+  return coverImages.get(url);
+}
+let tvT = 0;
+function drawTv(dt) {
+  tvT += dt;
+  const { g, c, t } = tv, W = c.width, H = c.height;
+  g.fillStyle = "#0d1020"; g.fillRect(0, 0, W, H);
+  const s = state.sounds[state.current];
+  if (s) {
+    const im = coverImage(art(s));
+    if (im && im.complete && im.naturalWidth) g.drawImage(im, 60, 110, 300, 300);
+    else { g.fillStyle = "#e8879f"; g.fillRect(60, 110, 300, 300); }
+    g.fillStyle = "#ffd6e0"; g.font = "700 30px Chivo"; g.fillText(((s.user && s.user.username) || "").toUpperCase().slice(0, 22), 395, 150);
+    g.fillStyle = "#ffffff"; g.font = "900 46px Fraunces";
+    wrap(g, s.title || "", 395, 210, 360, 52, 3);
+    g.fillStyle = "#9fd0ff"; g.font = "44px VT323";
+    g.fillText(state.finished ? "END OF SIDE" : fmt(state.pos) + " / " + fmt(state.duration), 395, 400);
+    g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(60, 450, 680, 10);
+    g.fillStyle = "#e8879f"; g.fillRect(60, 450, 680 * state.rel, 10);
+    g.fillStyle = state.playing ? "#9fd0ff" : "#ffd6e0"; g.font = "38px VT323";
+    g.fillText(state.playing ? "▶ NOW PLAYING" : "❚❚ NEEDLE UP", 60, 520);
+    g.textAlign = "right"; g.fillText("TRK " + String(state.current + 1).padStart(2, "0"), 740, 520); g.textAlign = "left";
+  } else {
+    g.fillStyle = "#ffffff"; g.font = "900 58px Fraunces"; g.textAlign = "center";
+    wrap(g, state.title, W / 2, 210, 660, 64, 2, true);
+    g.fillStyle = "#ffd6e0"; g.font = "700 26px Chivo";
+    g.fillText(state.by ? "SELECTED BY " + state.by.toUpperCase() : "", W / 2, 370);
+    g.fillStyle = (tvT % 1.4) < 0.9 ? "#9fd0ff" : "rgba(159,208,255,.35)"; g.font = "44px VT323";
+    g.fillText("PULL A RECORD FROM THE SHELF", W / 2, 470);
+    g.textAlign = "left";
+  }
+  // CRT scanlines + vignette
+  g.fillStyle = "rgba(0,0,0,.18)"; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
+  const v = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.55)");
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+  t.needsUpdate = true;
+}
+function wrap(g, text, x, y, maxW, lh, maxLines) {
+  const words = String(text).split(/\s+/); let line = "", n = 0;
+  for (let k = 0; k < words.length; k++) {
+    const test = line ? line + " " + words[k] : words[k];
+    if (g.measureText(test).width > maxW && line) {
+      if (n === maxLines - 1) { g.fillText(line + "…", x, y + n * lh); return; }
+      g.fillText(line, x, y + n * lh); n++; line = words[k];
+    } else line = test;
+  }
+  g.fillText(line, x, y + n * lh);
+}
+
+// Filler spines: three printed designs, tinted per instance
+function fillerSpineTex(variant) {
+  const { g, t } = canvasTex(64, 512, true);
+  g.fillStyle = "#fff"; g.fillRect(0, 0, 64, 512);
+  g.fillStyle = "rgba(0,0,0,.35)";
+  if (variant === 0) { g.fillRect(0, 40, 64, 10); g.fillRect(18, 90, 28, 280); g.fillRect(0, 460, 64, 16); }
+  if (variant === 1) { g.fillRect(24, 30, 16, 200); g.fillRect(24, 260, 16, 120); g.fillStyle = "rgba(255,255,255,.5)"; g.fillRect(0, 420, 64, 40); }
+  if (variant === 2) { g.fillRect(0, 0, 64, 110); g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(20, 150, 24, 240); }
+  return t;
+}
+function spineTexture(i) {
+  const s = state.sounds[i], { g, t } = canvasTex(96, 1280, true);
+  let base = `hsl(${(i * 47) % 360} 55% 42%)`;
+  const im = coverImage(art(s));
+  if (im && im.complete && im.naturalWidth) {       // spine colour from the cover's average
+    const sm = document.createElement("canvas"); sm.width = sm.height = 1;
+    try { const sg = sm.getContext("2d"); sg.drawImage(im, 0, 0, 1, 1); const d = sg.getImageData(0, 0, 1, 1).data; base = `rgb(${d[0]},${d[1]},${d[2]})`; } catch {}
+  }
+  g.fillStyle = base; g.fillRect(0, 0, 96, 1280);
+  g.fillStyle = "rgba(255,255,255,.9)"; g.fillRect(0, 0, 96, 18); g.fillRect(0, 1262, 96, 18);
+  g.save(); g.translate(62, 1230); g.rotate(-Math.PI / 2);
+  g.fillStyle = "#fff"; g.shadowColor = "rgba(0,0,0,.5)"; g.shadowBlur = 4;
+  g.font = "900 46px Chivo"; g.fillText(((s && s.title) || "Loading…").slice(0, 40), 0, 0, 1160);
+  g.font = "700 30px Chivo"; g.globalAlpha = .85; g.fillText(((s && s.user && s.user.username) || "").toUpperCase(), 0, -44, 1160);
+  g.restore();
+  return t;
+}
+
+/* ================================================================ the shelves */
+const LP_H = 0.315, LP_D = 0.31, PL_TH = 0.024, PROUD = 0.05;
+const rows = {};            // "r_b" -> { start, end }
+for (const r of [2, 3]) for (const b of [0, 1, 2]) rows[r + "_" + b] = { start: wp(`RowStart_${r}_${b}`), end: wp(`RowEnd_${r}_${b}`) };
+const fillerMeshes = [];
+const spines = [];          // playlist records
+const faceOuts = [];
+const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe9e1d4, roughness: .8 });
+
+function buildShelves() {
+  for (const m of fillerMeshes) { m.removeFromParent(); m.geometry.dispose(); }
+  for (const s of spines) s.mesh.removeFromParent();
+  for (const f of faceOuts) f.removeFromParent();
+  fillerMeshes.length = 0; spines.length = 0; faceOuts.length = 0;
+
+  const n = state.sounds.length;
+  const perBay = [0, 0, 0];
+  for (let i = 0; i < n; i++) perBay[Math.floor(i * 3 / Math.max(n, 1))]++;   // keep playlist order left to right
+  const bayStart = [0, perBay[0], perBay[0] + perBay[1]];
+  const fillers = [];
+
+  for (const r of [2, 3]) for (const b of [0, 1, 2]) {
+    const { start, end } = rows[r + "_" + b];
+    const len = end.x - start.x;
+    const count = r === 2 ? perBay[b] : 0;
+    const groupW = count * (PL_TH + 0.003);
+    const gapAt = start.x + len * (0.15 + rand() * 0.7), gapW = 0.05 + rand() * 0.08;   // a lean gap so it isn't machine-packed
+    const g0 = start.x + (len - groupW) / 2, g1 = g0 + groupW;
+    let x = start.x;
+    while (x < end.x - 0.004) {
+      if (count && x >= g0 - 0.004 && x < g1) {        // the playlist group sits mid-bay
+        let xx = g0;
+        for (let k = 0; k < count; k++) {
+          addSpine(bayStart[b] + k, new THREE.Vector3(xx + PL_TH / 2, start.y + LP_H / 2, start.z - LP_D / 2));
+          xx += PL_TH + 0.003;
+        }
+        x = g1 + 0.002; continue;
+      }
+      if (!count && x > gapAt && x < gapAt + gapW) { x = gapAt + gapW; continue; }
+      const th = 0.004 + rand() * 0.008;
+      if (x + th > end.x) break;
+      fillers.push({ x: x + th / 2, y: start.y, z: start.z, th, h: LP_H - rand() * 0.012 });
+      x += th + (rand() < 0.08 ? 0.004 : 0.0005);
+    }
+  }
+
+  const palette = ["#2b2525", "#7a2e2a", "#c8b28a", "#3f4f6e", "#b8643a", "#1e1e22", "#8a7a5a", "#d9c7a0", "#5a3a4a", "#a33d3d", "#2f5a4a", "#e0d6c0", "#d97a8f", "#6d86c8", "#f1e3c6"];
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const buckets = [[], [], []];
+  fillers.forEach(f => buckets[Math.floor(rand() * 3)].push(f));
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3(), col = new THREE.Color();
+  buckets.forEach((list, v) => {
+    const side = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .7 });
+    const spineMat = new THREE.MeshStandardMaterial({ map: fillerSpineTex(v), roughness: .6 });
+    const im = new THREE.InstancedMesh(geo, [side, side, side, side, spineMat, side], list.length);
+    list.forEach((f, k) => {
+      pos.set(f.x, f.y + f.h / 2, f.z - LP_D / 2); sc.set(f.th, f.h, LP_D); q.identity();
+      m4.compose(pos, q, sc); im.setMatrixAt(k, m4);
+      im.setColorAt(k, col.set(palette[Math.floor(rand() * palette.length)]));
+    });
+    im.receiveShadow = true;
+    scene.add(im); fillerMeshes.push(im);
+  });
+
+  // face-out covers standing on the lower shelves
+  for (let k = 0; k < 4 && n; k++) {
+    const anchor = N["FaceOut_" + k]; if (!anchor) continue;
+    const i = (k * 5 + 2) % n;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.315, 0.315, 0.004), [edgeMat, edgeMat, edgeMat, edgeMat, new THREE.MeshStandardMaterial({ map: coverTexture(i), roughness: .5 }), edgeMat]);
+    anchor.getWorldPosition(m.position); m.position.y += 0.315 / 2; m.rotation.x = -0.12;
+    m.castShadow = true; scene.add(m); faceOuts.push(m);
+  }
+}
+
+const coverCache = new Map();
+const texLoader = new THREE.TextureLoader(); texLoader.setCrossOrigin("anonymous");
+function coverTexture(i) {
+  const s = state.sounds[i], url = art(s);
+  if (url) {
+    if (!coverCache.has(url)) { const t = texLoader.load(url, () => refreshSpine(i)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; coverCache.set(url, t); }
+    return coverCache.get(url);
+  }
+  const { g, t } = canvasTex(256, 256, true);
+  g.fillStyle = `hsl(${(i * 47) % 360} 60% 55%)`; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = "#1f1a2e"; g.font = "900 22px Chivo"; g.fillText((s && s.title) || "Loading…", 14, 230, 228);
+  return t;
+}
+
+const spineGeo = new THREE.BoxGeometry(PL_TH, LP_H, LP_D);
+function addSpine(i, home) {
+  const coverMat = new THREE.MeshStandardMaterial({ map: coverTexture(i), roughness: .5 });
+  const spineMat = new THREE.MeshStandardMaterial({ map: spineTexture(i), roughness: .55 });
+  // faces: +x (front cover), -x (back), +y, -y, +z (spine, facing the room), -z
+  const mesh = new THREE.Mesh(spineGeo, [coverMat, coverMat, edgeMat, edgeMat, spineMat, edgeMat]);
+  mesh.position.copy(home); mesh.castShadow = true; mesh.receiveShadow = true;
+  const s = { i, mesh, home, pull: PROUD, pullTarget: PROUD, mode: "shelf", carry: null, yaw: 0, hover: 0 };
+  mesh.userData.spine = s;
+  scene.add(mesh); spines.push(s);
+}
+function refreshSpine(i) {   // cover art arrived: repaint the spine colour from it
+  const s = spines.find(x => x.i === i); if (!s) return;
+  setTimeout(() => { s.mesh.material[4].map = spineTexture(i); s.mesh.material[4].needsUpdate = true; }, 50);
+}
+
+/* ================================================================ SoundCloud */
+async function loadPlaylist(url) {
+  setStatus("Pulling records from SoundCloud…");
+  takeOffDeck(true);
+  state.sounds = []; state.fillTries = 0;
+  buildShelves();
+  let widgetSrc = url;
+  try {
+    const r = await fetch("https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(url));
+    if (!r.ok) throw new Error(r.status);
+    const o = await r.json();
+    const m = (o.title || "").match(/^(.*) by (.*)$/);
+    state.title = m ? m[1] : (o.title || "Record Room");
+    state.by = o.author_name || (m && m[2]) || "";
+    const src = (o.html || "").match(/src="([^"]+)"/);
+    if (src) { const inner = new URL(src[1].replace(/&amp;/g, "&")).searchParams.get("url"); if (inner) widgetSrc = inner; }
+  } catch {
+    setStatus("Couldn't find that playlist. Check the link is public and starts with https://soundcloud.com/", true);
+    return;
+  }
+  document.title = state.title + " · Record Room";
+  const params = new URLSearchParams({ url: widgetSrc, auto_play: "false", visual: "false", color: "#e8879f", hide_related: "true",
+    show_comments: "false", show_reposts: "false", show_teaser: "false", sharing: "false", buying: "false", download: "false" });
+  els.host.innerHTML = "";
+  const iframe = document.createElement("iframe");
+  iframe.title = "SoundCloud player"; iframe.allow = "autoplay; encrypted-media";
+  iframe.src = "https://w.soundcloud.com/player/?" + params;
+  els.host.appendChild(iframe);
+  const w = SC.Widget(iframe), E = SC.Widget.Events;
+  state.widget = w;
+  w.bind(E.READY, () => fetchSounds());
+  w.bind(E.PLAY, onPlay);
+  w.bind(E.PAUSE, () => setPlaying(false));
+  w.bind(E.FINISH, onFinish);
+  w.bind(E.ERROR, () => setStatus("SoundCloud couldn't play that track. It may be blocked from embedding.", true));
+  w.bind(E.PLAY_PROGRESS, p => {
+    state.rel = p.relativePosition || 0; state.pos = p.currentPosition || 0;
+    if (state.current >= 0 && state.playing) arm.target = armAt(state.rel);
+  });
+  store.set("vinylroom:url", url);
+}
+
+function fetchSounds() {
+  const w = state.widget;
+  w.getSounds(list => {
+    if (state.widget !== w) return;
+    const prevMissing = state.sounds.filter(s => !s.title).length, prevLen = state.sounds.length;
+    state.sounds = list || [];
+    const missing = state.sounds.filter(s => !s.title).length;
+    if (!state.sounds.length) {
+      if (state.fillTries++ < 12) { setTimeout(() => state.widget === w && fetchSounds(), 700); return; }
+      setStatus("SoundCloud found this playlist but won't hand over its tracks. It's empty, private, or the uploader turned off embedding. Try another link.", true);
+      return;
+    }
+    if (prevLen !== state.sounds.length || prevMissing !== missing) buildShelves();
+    setStatus(missing ? `Loading sleeves… ${state.sounds.length - missing} of ${state.sounds.length}` : `${state.sounds.length} records on the shelf.`);
+    if (missing && state.fillTries++ < 20) setTimeout(() => state.widget === w && fetchSounds(), 1500);
+  });
+}
+
+const rec = { y: 0, speed: 0, dragging: false, target: null, baseY: N.Record.position.y };
+
+function putOnDeck(i) {
+  if (!state.widget || !state.sounds[i]) return;
+  state.current = i; state.rel = 0; state.pos = 0; state.finished = false;
+  state.duration = state.sounds[i].duration || 0;
+  const lab = N.RecordLabel.material;
+  const t = coverTexture(i).clone(); t.flipY = false; t.needsUpdate = true;
+  lab.map = t; lab.color.set(0xffffff); lab.needsUpdate = true;
+  N.Record.visible = true;
+  N.Record.position.x = deck.center.x; N.Record.position.z = deck.center.z;
+  rec.y = 0.35; rec.dragging = false; rec.target = null;
+  for (const s of spines) if (s.mode === "shelf") s.pullTarget = s.i === i ? 0.18 : PROUD;   // its sleeve sticks out a little
+  els.hint.style.opacity = 0;
+  setTimeout(() => {
+    if (state.current !== i) return;
+    arm.target = arm.outer;
+    state.widget.skip(i);
+    setTimeout(() => state.current === i && state.widget.play(), 350);
+  }, 650);
+}
+function takeOffDeck(silent) {
+  if (state.widget && !silent) state.widget.pause();
+  state.current = -1; state.rel = 0; state.finished = false;
+  N.Record.visible = false;
+  arm.target = arm.rest;
+  setPlaying(false);
+  for (const s of spines) if (s.mode === "shelf") s.pullTarget = PROUD;
+}
+function setPlaying(on) {
+  state.playing = on;
+  const m = N.PowerLight.material; m.emissive = new THREE.Color(on ? 0xff2020 : 0x000000); m.emissiveIntensity = 3;
+}
+function onPlay() {
+  state.widget.getCurrentSoundIndex(idx => {
+    if (idx !== state.current) {
+      if (els.auto.checked && state.current >= 0 && state.sounds[idx]) { putOnDeck(idx); return; }
+      state.widget.pause(); return;
+    }
+    state.widget.getCurrentSound(s => { if (s && s.duration) state.duration = s.duration; });
+    state.finished = false; setPlaying(true); arm.target = armAt(state.rel);
+  });
+}
+function onFinish() { setPlaying(false); if (!els.auto.checked) { arm.target = arm.rest; state.finished = true; } }
+function toggleNeedle() {
+  if (!state.widget || state.current < 0) return;
+  if (state.playing) { state.widget.pause(); arm.target = arm.rest; }
+  else { arm.target = armAt(state.rel); state.widget.play(); }
+}
+
+/* ================================================================ picking, pulling, carrying */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const carryPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+let drag = null, hover = null;
+const PULL_PX = 170;   // pixels of drag to pull a record all the way out
+
+function setNdc(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+}
+function pick() {
+  const targets = [...spines.map(s => s.mesh), N.TonearmPivot];
+  if (N.Record.visible) targets.push(N.Record);
+  const hit = ray.intersectObjects(targets, true)[0];
+  if (!hit) return null;
+  let o = hit.object;
+  if (o.userData.spine) return { kind: "spine", spine: o.userData.spine };
+  while (o) { if (o === N.Record) return { kind: "record" }; if (o === N.TonearmPivot) return { kind: "arm" }; o = o.parent; }
+  return null;
+}
+const overDeck = p => Math.hypot(p.x - deck.center.x, p.z - deck.center.z) < 0.3;
+function carryPoint() {
+  carryPlane.constant = -(deck.y + 0.22);
+  const p = new THREE.Vector3();
+  return ray.ray.intersectPlane(carryPlane, p) ? p : null;
+}
+
+renderer.domElement.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  setNdc(e);
+  const h = pick(); if (!h) return;
+  controls.enabled = false;                           // capture listener runs before OrbitControls
+  drag = { h, x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId, startPull: h.spine ? h.spine.pullTarget : 0 };
+  if (h.kind === "spine") { h.spine.pullTarget = Math.max(h.spine.pullTarget, 0.08); showTag(h.spine); }
+  try { renderer.domElement.setPointerCapture(e.pointerId); } catch {}
+}, { capture: true });
+
+renderer.domElement.addEventListener("pointermove", e => {
+  setNdc(e);
+  if (!drag) { updateHover(); return; }
+  const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  els.room.classList.add("grabbing");
+  const { h } = drag;
+  if (h.kind === "spine") {
+    const s = h.spine;
+    if (s.mode === "shelf") {
+      // pulling: dragging down (towards you) slides it out; sideways helps a little
+      const pull = Math.min(1, drag.startPull + Math.max(0, dy) / PULL_PX + Math.abs(dx) / (PULL_PX * 3));
+      s.pullTarget = Math.max(0.08, pull);
+      if (pull >= 1) { s.mode = "carried"; els.hint.style.opacity = 0; }
+    }
+    if (s.mode === "carried") {
+      const p = carryPoint();
+      if (p) { s.carry = p; N.DropRing.visible = overDeck(p); }
+    }
+    showTag(s);
+  } else if (h.kind === "record") {
+    if (!rec.dragging) { rec.dragging = true; arm.target = arm.rest; if (state.playing) state.widget.pause(); }
+    const p = carryPoint(); if (p) rec.target = p;
+  }
+});
+
+function endDrag(e) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  controls.enabled = true;
+  els.room.classList.remove("grabbing");
+  N.DropRing.visible = false;
+  setNdc(e);
+  if (d.h.kind === "spine") {
+    const s = d.h.spine;
+    const rest = s.i === state.current ? 0.18 : PROUD;
+    if (!d.moved) {                                   // click: peek it half out, click again to push it back
+      s.pullTarget = d.startPull > 0.3 ? rest : 0.55;
+      if (s.pullTarget < 0.3) hideTag(); else showTag(s);
+      return;
+    }
+    if (s.mode === "carried") {
+      const p = carryPoint();
+      s.mode = "shelf"; s.carry = null;
+      if (p && overDeck(p)) putOnDeck(s.i); else s.pullTarget = rest;
+    } else s.pullTarget = rest;                         // let go early: it slides back in
+    hideTag();
+    return;
+  }
+  if (d.h.kind === "arm" && !d.moved) { toggleNeedle(); return; }
+  if (d.h.kind === "record") {
+    if (!d.moved) { toggleNeedle(); return; }
+    rec.dragging = false; rec.target = null;
+    const p = carryPoint();
+    if (p && overDeck(p)) { if (state.current >= 0) { arm.target = armAt(state.rel); state.widget.play(); } }
+    else takeOffDeck();
+  }
+}
+renderer.domElement.addEventListener("pointerup", endDrag);
+renderer.domElement.addEventListener("pointercancel", endDrag);
+renderer.domElement.addEventListener("dblclick", e => { setNdc(e); const h = pick(); if (h && h.kind === "spine") putOnDeck(h.spine.i); });
+
+function updateHover() {
+  const h = pick();
+  hover = h && h.kind === "spine" ? h.spine : null;
+  els.room.classList.toggle("grab", !!h && (h.kind === "spine" || h.kind === "record"));
+  els.room.classList.toggle("point", !!h && h.kind === "arm");
+  if (hover) showTag(hover);
+  else { const peeking = spines.find(s => s.pullTarget >= 0.3); if (peeking) showTag(peeking); else hideTag(); }
+}
+let tagFor = null;
+function showTag(s) {
+  const snd = state.sounds[s.i]; if (!snd) return;
+  if (tagFor !== s) {
+    els.tagArtist.textContent = (snd.user && snd.user.username) || "Track " + (s.i + 1);
+    els.tagTitle.textContent = snd.title || "Loading…";
+  }
+  tagFor = s;
+  els.tagHint.textContent = s.mode === "carried" ? "Drop it on the turntable" : s.i === state.current ? "On the turntable now" : "Drag down to pull it out";
+  els.tag.classList.add("show");
+}
+function hideTag() { els.tag.classList.remove("show"); tagFor = null; }
+
+/* ================================================================ loop */
+const VIEW_DIR = new THREE.Vector3(0, 0.3, 1).normalize();
+let framed = false;
+function resize() {
+  const w = els.room.clientWidth, h = els.room.clientHeight, aspect = w / h;
+  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h);
+  camera.aspect = aspect; camera.fov = aspect < 0.8 ? 55 : 40; camera.updateProjectionMatrix();
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2, hf = Math.atan(Math.tan(vf) * aspect);
+  const needW = aspect < 0.8 ? 3.0 : 5.6, needH = 2.6;
+  const dist = Math.min(5.2, Math.max((needW / 2) / Math.tan(hf), (needH / 2) / Math.tan(vf)));
+  controls.maxDistance = Math.max(dist * 1.1, 2.5);
+  if (!framed) { camera.position.copy(controls.target).addScaledVector(VIEW_DIR, dist); framed = true; }
+}
+addEventListener("resize", resize); resize();
+
+const clock = new THREE.Clock();
+let tvTimer = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  controls.update();
+
+  // playlist spines: hover nudge, pull-out, carry, return
+  for (const s of spines) {
+    const m = s.mesh;
+    s.hover = damp(s.hover, s === hover && !drag ? 0.03 : 0, 12, dt);
+    s.pull = damp(s.pull, s.pullTarget, drag && drag.h.spine === s ? 20 : 9, dt);
+    if (s.mode === "carried" && s.carry) {
+      m.position.x = damp(m.position.x, s.carry.x, 14, dt);
+      m.position.y = damp(m.position.y, s.carry.y + 0.12, 10, dt);
+      m.position.z = damp(m.position.z, s.carry.z, 14, dt);
+      s.yaw = damp(s.yaw, -Math.PI / 2, 8, dt);          // turn the cover to face you
+      m.rotation.set(0, s.yaw, 0);
+      m.rotateX(-0.25);
+    } else {
+      const out = Math.min(1, s.pull) * (LP_D + 0.03) + s.hover * (1 - s.pull);
+      const tx = s.home.x, ty = s.home.y + Math.max(0, s.pull - 0.75) * 0.25, tz = s.home.z + out;
+      m.position.x = damp(m.position.x, tx, 9, dt);
+      m.position.y = damp(m.position.y, ty, 9, dt);
+      m.position.z = damp(m.position.z, tz, 9, dt);
+      // once it's mostly clear of its neighbours, it starts to turn so you can see the cover
+      s.yaw = damp(s.yaw, -Math.max(0, (s.pull - 0.8) / 0.2) * 0.9, 10, dt);
+      m.rotation.set(0, s.yaw, 0);
+    }
+  }
+
+  // record on the platter
+  if (N.Record.visible) {
+    const r = N.Record;
+    if (rec.dragging && rec.target) {
+      r.position.x = damp(r.position.x, rec.target.x, 18, dt);
+      r.position.z = damp(r.position.z, rec.target.z, 18, dt);
+      rec.y = damp(rec.y, 0.22, 12, dt);
+    } else {
+      r.position.x = damp(r.position.x, deck.center.x, 10, dt);
+      r.position.z = damp(r.position.z, deck.center.z, 10, dt);
+      rec.y = damp(rec.y, 0, 7, dt);
+    }
+    r.position.y = rec.baseY + rec.y;
+    rec.speed = damp(rec.speed, state.playing ? (Math.PI * 2) / 1.8 : 0, state.playing ? 3 : 1.6, dt);
+    r.rotation.y -= rec.speed * dt;
+  }
+
+  arm.angle = damp(arm.angle, arm.target, state.playing ? 3 : 2.2, dt);
+  N.TonearmPivot.rotation.y = arm.base + arm.angle;
+  if (N.DropRing.visible) N.DropRing.scale.setScalar(1 + Math.sin(t * 6) * 0.03);
+
+  // title card rides above the record being pulled or hovered
+  if (tagFor) {
+    tmpV.copy(tagFor.mesh.position); tmpV.y += LP_H / 2 + 0.02; tmpV.project(camera);
+    els.tag.style.left = ((tmpV.x + 1) / 2) * els.room.clientWidth + "px";
+    els.tag.style.top = ((1 - tmpV.y) / 2) * els.room.clientHeight + "px";
+    els.tagMeter.style.width = (tagFor.mode === "carried" ? 100 : Math.min(100, tagFor.pull * 100)) + "%";
+  }
+
+  tvTimer += dt;
+  if (tvTimer > 1 / 20) { drawTv(tvTimer); tvTimer = 0; }
+  composer.render();
+});
+
+await document.fonts.load("900 46px Fraunces").catch(() => {});
+await document.fonts.load("900 46px Chivo").catch(() => {});
+els.loading.classList.add("done");
+
+/* ================================================================ boot */
+els.form.addEventListener("submit", e => {
+  e.preventDefault();
+  const url = els.url.value.trim();
+  if (!/^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i.test(url)) {
+    setStatus("That doesn't look like a SoundCloud link. It should start with https://soundcloud.com/", true);
+    return;
+  }
+  loadPlaylist(url);
+});
+const qs = new URLSearchParams(location.search).get("url");
+const start = qs || store.get("vinylroom:url") || DEFAULT_URL;
+els.url.value = start;
+loadPlaylist(start);
+window.__room = { N, state, spines, deck, arm, camera, controls, putOnDeck, pick, setNdc };  // for debugging in the console
+</script>
+</body>
+</html>

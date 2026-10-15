@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Record Room</title>
+<meta name="description" content="Paste a SoundCloud playlist, pull a record off the shelf and drop it on the turntable.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;700;900&family=VT323&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap">
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<style>
+/* Layout: the Blender render is the room. Interactive pieces are positioned in the render's own pixel space from
+   assets/scene.json (exported by blender/sleek_room.py --plate), and the whole stage scales to fit. */
+:root {
+  color-scheme: light;
+  --wall: #5a71aa;
+  --wall-deep: #3b4f86;
+  --pink: #e98aa2;
+  --pink-ink: #7a2a44;
+  --cream: #f6eee8;
+  --ink: #1f1a2e;
+  --muted: #d7defa;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Chivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--wall-deep); color: var(--cream); font-family: var(--font-body); overflow-x: hidden; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
+
+/* ---------- stage ---------- */
+.viewport { position: relative; width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: var(--wall); }
+.viewport.scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.viewport.scroll::-webkit-scrollbar { display: none; }
+.sizer { position: relative; margin: 0 auto; }
+.stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-select: none; }
+.photo { position: absolute; left: 0; top: 0; display: block; pointer-events: none; }
+
+.shelf { position: absolute; }
+.shelf::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6%; pointer-events: none; background: linear-gradient(0deg, rgba(20,24,50,.35), transparent); }
+.filler { position: absolute; bottom: 0; border-radius: 1px 1px 0 0; transform-origin: 0 100%; box-shadow: inset -1px 0 0 rgba(0,0,0,.35), inset 1px 0 0 rgba(255,255,255,.1); }
+.rec { position: absolute; bottom: 0; transform-style: preserve-3d; cursor: grab; touch-action: none; }
+.rec .face { position: absolute; top: 0; backface-visibility: hidden; }
+.rec .cover, .rec .back, .rec .top { opacity: var(--rv, 0); } /* packed neighbours hide the sides until it comes out */
+.rec .spine { left: 0; width: 100%; height: 100%; overflow: hidden; border-radius: 1px 1px 0 0; box-shadow: inset -1px 0 0 rgba(0,0,0,.4), inset 1px 0 0 rgba(255,255,255,.2); }
+.rec .spine canvas { width: 100%; height: 100%; display: block; }
+.rec .spine::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.28), rgba(255,255,255,.1) 45%, rgba(0,0,0,.3)); }
+.rec .cover { left: 100%; transform-origin: 0 50%; transform: rotateY(90deg); background: #ddd center/cover no-repeat; }
+.rec .back { right: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); background: #cfc6b8 center/cover no-repeat; filter: brightness(.8); }
+.rec .top { left: 0; width: 100%; transform-origin: 50% 0; transform: rotateX(-90deg); background: #e9e1d4; }
+.rec.gone { visibility: hidden; }
+.rec.ondeck .spine { outline: 2px solid #ffd6e0; outline-offset: -2px; }
+
+.disc-wrap { position: absolute; pointer-events: none; }
+.disc-edge, .disc { position: absolute; inset: 0; border-radius: 50%; }
+.disc-edge { background: #0e0e0e; }
+.disc { cursor: grab; pointer-events: auto; overflow: hidden;
+  background: radial-gradient(circle, transparent 0 17%, #0d0d0d 17.5% 19%, transparent 19.5%), repeating-radial-gradient(circle, #151515 0 1.5px, #232323 1.5px 3px), #151515; }
+.disc .spin { position: absolute; inset: 0; border-radius: 50%; }
+.disc .label { position: absolute; border-radius: 50%; background: var(--pink) center/cover no-repeat; box-shadow: 0 0 0 2px #0b0b0b; }
+.disc .sheen { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 20deg, transparent 0 10%, rgba(255,255,255,.2) 14%, transparent 19% 55%, rgba(255,255,255,.13) 64%, transparent 69%); }
+.tonearm { position: absolute; pointer-events: none; background-repeat: no-repeat; }
+.stage.arm-hover { cursor: grab; }
+.stage.arm-drag { cursor: grabbing; }
+.drop-glow { position: absolute; border-radius: 50%; border: 3px solid #9ff3ff; box-shadow: 0 0 26px 6px rgba(120,235,255,.8), inset 0 0 16px rgba(120,235,255,.6);
+  opacity: 0; transform: scale(.92); transition: opacity .15s, transform .15s; pointer-events: none; }
+.drop-glow.on { opacity: 1; transform: scale(1); }
+
+.tv { position: absolute; overflow: hidden; pointer-events: none; }
+.tv canvas { width: 100%; height: 100%; display: block; }
+.tv::after { content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(ellipse at 30% 22%, rgba(255,255,255,.2), transparent 42%); box-shadow: inset 0 0 22px 6px rgba(0,0,0,.7); }
+
+.carried { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 80; background: #ddd center/cover no-repeat; border-radius: 3px;
+  box-shadow: 0 30px 50px rgba(20,20,50,.45), 0 0 0 1px rgba(0,0,0,.08); }
+.carried .peek { position: absolute; top: 3%; left: 30%; width: 94%; height: 94%; border-radius: 50%; z-index: -1; }
+.carried.vinyl { background: none; box-shadow: none; }
+.carried.vinyl .peek { left: 0; top: 0; width: 100%; height: 100%; }
+
+/* overlays in screen space */
+.wrap-outer { position: relative; }
+/* title card: a glossy pink lacquer tag, like the credenza, with the TV's pixel type */
+.tag { position: absolute; left: 0; top: 0; z-index: 90; pointer-events: none; width: max-content; max-width: min(300px, 76vw);
+  background: linear-gradient(180deg, #f6b2c4 0%, #ec91a8 55%, #e3819b 100%); color: #fff;
+  border: 3px solid #fcd6e0; border-radius: 16px; padding: 9px 16px 12px;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.55), 0 6px 0 #b85a74, 0 20px 30px rgba(31,26,46,.35);
+  transform: translate(-50%, calc(-100% - 22px)) scale(.9); transform-origin: 50% 100%; opacity: 0; transition: opacity .15s, transform .18s cubic-bezier(.3,1.4,.5,1); }
+.tag::after { content: ""; position: absolute; left: 50%; bottom: -13px; width: 16px; height: 16px; margin-left: -8px; transform: rotate(45deg);
+  background: #e3819b; border-right: 3px solid #fcd6e0; border-bottom: 3px solid #fcd6e0; box-shadow: 4px 4px 0 #b85a74; z-index: -1; }
+.tag.show { opacity: 1; transform: translate(-50%, calc(-100% - 22px)) scale(1); }
+.tag em { display: block; font: 18px/1 "VT323", ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; font-style: normal; color: #33467e; }
+.tag strong { display: block; font: 900 21px/1.08 var(--font-body); letter-spacing: -.01em; margin-top: 4px; text-wrap: balance; text-shadow: 0 2px 0 #b85a74; }
+.tag small { display: inline-block; margin-top: 8px; padding: 2px 9px 1px; border-radius: 999px; background: #5a71aa; color: #eef2ff;
+  font: 16px/1.1 "VT323", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; box-shadow: inset 0 -2px 0 rgba(0,0,0,.2); }
+.tag .meter { height: 5px; margin-top: 8px; background: rgba(255,255,255,.45); border-radius: 3px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(122,42,68,.35); }
+.tag .meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6f8ccc, #33467e); border-radius: 3px; }
+.hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; pointer-events: none;
+  background: rgba(31,26,46,.62); border-radius: 999px; padding: 8px 16px; font-size: 13px; color: var(--cream);
+  white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(6px); transition: opacity .4s; }
+.hint b { color: #ffc6d5; }
+.jump { position: absolute; right: 14px; bottom: 14px; z-index: 21; background: rgba(31,26,46,.62); color: var(--cream); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; backdrop-filter: blur(6px); }
+.jump:hover { background: rgba(31,26,46,.8); }
+@media (max-width: 760px) { .hint { bottom: 58px; } }
+.loading { position: absolute; inset: 0; z-index: 95; display: grid; place-items: center; background: var(--wall);
+  font: 900 22px/1 var(--font-display); color: var(--cream); transition: opacity .6s; min-height: 320px; }
+.loading.done { opacity: 0; pointer-events: none; }
+
+/* ---------- control bar ---------- */
+.bar { max-width: 1200px; margin: 0 auto; padding: 22px 16px 36px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+@media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr); } }
+.bar h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.loader { display: flex; gap: 8px; flex-wrap: wrap; }
+.loader input { flex: 1 1 240px; min-width: 0; background: rgba(255,255,255,.12); color: var(--cream); border: 1px solid rgba(246,238,232,.35); border-radius: 6px; padding: 10px 12px; }
+.loader input::placeholder { color: var(--muted); }
+.btn { background: var(--pink); color: var(--ink); border: 0; border-radius: 6px; padding: 10px 16px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; box-shadow: 0 3px 0 #b85a74; cursor: pointer; }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #b85a74; }
+.status { width: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: #ffd0d0; font-weight: 700; }
+.help { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.help b { color: #ffc6d5; }
+.opts { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.player-box { background: rgba(31,26,46,.35); border-radius: 6px; padding: 8px; }
+.player-box iframe { display: block; width: 100%; height: 166px; border: 0; border-radius: 3px; background: #2a2640; }
+.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .tag, .drop-glow, .hint { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap-outer" id="outer">
+  <div class="viewport" id="viewport">
+    <div class="sizer" id="sizer">
+      <div class="stage" id="stage">
+        <img class="photo" id="photo" alt="A periwinkle listening room with a wall of records, a long pink credenza with a pink CRT television, a pink leather sofa and a pink tulip table holding a large blue turntable" draggable="false">
+        <div class="tv" id="tv-box"><canvas id="tv" width="720" height="480"></canvas></div>
+        <div class="shelf" id="shelf"></div>
+        <div class="drop-glow" id="drop-glow"></div>
+        <div class="disc-wrap" id="disc-wrap" hidden>
+          <div class="disc-edge" id="disc-edge"></div>
+          <div class="disc" id="disc" title="Click to lift the needle, drag off to stop">
+            <div class="spin" id="spin"><div class="label" id="label"></div></div>
+            <div class="sheen"></div>
+          </div>
+        </div>
+        <div class="tonearm" id="tonearm" role="slider" aria-label="Tonearm: drag onto the record to play" tabindex="0"></div>
+        <div id="carry-layer"></div>
+      </div>
+    </div>
+    <div class="loading" id="loading">Warming up the room…</div>
+  </div>
+  <div class="tag" id="tag"><em id="tag-artist"></em><strong id="tag-title"></strong><small id="tag-hint"></small><div class="meter"><i id="tag-meter"></i></div></div>
+  <div class="hint" id="hint"><b>Pull</b> a record off the shelf above the TV (drag it down) · drop it on the turntable</div>
+  <a class="jump" href="#controls">Playlist ↓</a>
+</div>
+
+<section class="bar" id="controls">
+  <div>
+    <h2>Load a playlist</h2>
+    <form class="loader" id="loader">
+      <input id="url" type="url" required placeholder="https://soundcloud.com/artist/sets/playlist-name" aria-label="SoundCloud playlist link">
+      <button class="btn" type="submit">Fill the shelf</button>
+      <p class="status" id="status" role="status"></p>
+    </form>
+    <ul class="help">
+      <li><b>Grab a spine</b> on the middle shelf above the TV and drag down. It slides out towards you and its title comes up.</li>
+      <li><b>Keep pulling</b> until it's free, then carry it to the big blue turntable on the coffee table.</li>
+      <li><b>Drag the tonearm</b> onto the record to start it. The song plays from the beginning. Lift the arm off to stop.</li>
+      <li><b>Drag the record off</b> the turntable to stop and put it away.</li>
+      <li><b>Click a spine</b> to peek at it, click again to push it back. Double-click plays it straight away.</li>
+    </ul>
+    <div class="opts"><label><input type="checkbox" id="autochange"> Auto-change: play the next record when one ends</label></div>
+  </div>
+  <div>
+    <h2>Source</h2>
+    <div class="player-box" id="player-host"><iframe title="SoundCloud player" src="about:blank"></iframe></div>
+    <p class="note">Playback runs through SoundCloud's player. Private playlists and tracks with embedding turned off won't load. The room is modelled and rendered in Blender.</p>
+  </div>
+</section>
+
+<script>
+(async () => {
+  const DEFAULT_URL = "https://soundcloud.com/alumomusic/sets/synthwave";
+  const S = await (await fetch("assets/scene.json")).json();      // exported by blender/sleek_room.py --plate
+  const STAGE_W = S.stage.w, STAGE_H = S.stage.h;
+  const PPM = S.px_per_m;                                          // pixels per metre at the shelf
+  const PLATTER = { x: S.disc.cx, y: S.disc.cy, rx: S.disc.rx, ry: S.disc.ry };
+  const SLOT = S.slot;
+  const REC_H = SLOT.height - 2, REC_D = 0.31 * PPM;
+  const PROUD_ON = 0.14, MAX_RECORDS = 60, PULL_PX = 150;
+  // the same spine palette the Blender scene uses, pre-shaded to sit in the render
+  const SPINES = ["#6b5642", "#2a1d12", "#4f4232", "#7b4526", "#5e3b27", "#48331b", "#8e5a3a", "#9b897d", "#3b3418", "#c9a36b", "#b8743f",
+    "#d8c7a2", "#8a2f22", "#2c2622", "#a88a5c", "#e1d2b4", "#5f5442", "#b0452f", "#3e4a5c", "#d9b98a", "#7a6a4f", "#c65b3c"];
+
+  const $ = id => document.getElementById(id);
+  const els = { outer: $("outer"), viewport: $("viewport"), sizer: $("sizer"), stage: $("stage"), photo: $("photo"), shelf: $("shelf"), glow: $("drop-glow"),
+    discWrap: $("disc-wrap"), discEdge: $("disc-edge"), disc: $("disc"), spin: $("spin"), label: $("label"), carry: $("carry-layer"), tv: $("tv"), tvBox: $("tv-box"),
+    tonearm: $("tonearm"), tag: $("tag"), tagArtist: $("tag-artist"), tagTitle: $("tag-title"), tagHint: $("tag-hint"), tagMeter: $("tag-meter"), hint: $("hint"),
+    loading: $("loading"), form: $("loader"), url: $("url"), status: $("status"), host: $("player-host"), auto: $("autochange") };
+
+  /* ---------------- place everything from scene.json ---------------- */
+  const px = v => v + "px";
+  Object.assign(els.stage.style, { width: px(STAGE_W), height: px(STAGE_H) });
+  Object.assign(els.photo.style, { width: px(STAGE_W), height: px(STAGE_H) });
+  Object.assign(els.shelf.style, { left: px(SLOT.left), top: px(SLOT.top), width: px(SLOT.width), height: px(SLOT.height),
+    perspective: px(S.focal_px * 0.3), perspectiveOrigin: `${S.vp[0] - SLOT.left}px ${S.vp[1] - SLOT.top}px` });
+  const D = PLATTER.rx * 2, squash = PLATTER.ry / PLATTER.rx;
+  Object.assign(els.discWrap.style, { left: px(PLATTER.x - PLATTER.rx), top: px(PLATTER.y - PLATTER.rx), width: px(D), height: px(D) });
+  els.disc.style.transform = `scaleY(${squash})`;
+  els.discEdge.style.transform = `translateY(${Math.max(2, D * 0.012)}px) scaleY(${squash})`;
+  const lab = S.disc.label * 100;
+  Object.assign(els.label.style, { left: (50 - lab) + "%", top: (50 - lab) + "%", width: lab * 2 + "%", height: lab * 2 + "%" });
+  Object.assign(els.glow.style, { left: px(PLATTER.x - PLATTER.rx * 1.12), top: px(PLATTER.y - PLATTER.ry * 1.25), width: px(PLATTER.rx * 2.24), height: px(PLATTER.ry * 2.5) });
+  const ARM = S.arm, GS = ARM.grooveStart, NF = ARM.frames;
+  Object.assign(els.tonearm.style, { left: px(ARM.left), top: px(ARM.top), width: px(ARM.frameW), height: px(ARM.frameH),
+    backgroundImage: "url(assets/tonearm-sprite.png)", backgroundSize: `${ARM.frameW * NF}px ${ARM.frameH}px` });
+  const frameToRel = k => Math.min(1, Math.max(0, (k - GS) / (NF - 1 - GS)));
+  const relToFrame = rel => GS + rel * (NF - 1 - GS);
+  Object.assign(els.tvBox.style, { left: px(S.tv.left + S.tv.width * 0.03), top: px(S.tv.top + S.tv.height * 0.04), width: px(S.tv.width * 0.94), height: px(S.tv.height * 0.92),
+    borderRadius: `${S.tv.width * 0.12}px / ${S.tv.height * 0.14}px` });
+  const CARRY = 0.34 * PPM * 1.9;                                  // a sleeve held up close
+  await new Promise(res => { els.photo.onload = res; els.photo.onerror = res; els.photo.src = "assets/room-render.jpg"; });
+
+  const state = { needle: false, loaded: -1, sounds: [], current: -1, playing: false, finished: false, widget: null, rel: 0, pos: 0, duration: 0, fillTries: 0, title: "Record Room", by: "" };
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+  const art = s => { const u = (s && (s.artwork_url || (s.user && s.user.avatar_url))) || ""; return u ? u.replace("-large.", "-t500x500.") : ""; };
+  const fmt = ms => { if (!ms && ms !== 0) return "--:--"; const t = Math.floor(ms / 1000); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+  const setStatus = (msg, err) => { els.status.textContent = msg || ""; els.status.classList.toggle("err", !!err); };
+  const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+  let seed = 1987; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); return `rgb(${((n >> 16) & 255) * f | 0},${((n >> 8) & 255) * f | 0},${(n & 255) * f | 0})`; };
+
+  /* ---------------- fit the stage ---------------- */
+  let scale = 1, scrolledOnce = false;
+  function layout() {
+    // fill the window like a photo in a frame; portrait phones scroll sideways instead of cropping the room away
+    const vw = els.viewport.clientWidth, vh = els.viewport.clientHeight, portrait = vw / vh < 1;
+    scale = portrait ? vh / STAGE_H : Math.max(vw / STAGE_W, vh / STAGE_H);
+    const w = STAGE_W * scale, h = STAGE_H * scale;
+    els.viewport.classList.toggle("scroll", portrait);
+    els.sizer.style.width = (portrait ? w : vw) + "px";
+    els.sizer.style.height = vh + "px";
+    const ox = portrait ? 0 : (vw - w) / 2, oy = Math.max(vh - h, (vh - h) * 0.12);   // keep more of the shelves than the floor
+    els.stage.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+    if (portrait && !scrolledOnce) { els.viewport.scrollLeft = PLATTER.x * scale - vw / 2; scrolledOnce = true; }
+  }
+  addEventListener("resize", layout); layout();
+  const toStage = (cx, cy) => { const r = els.stage.getBoundingClientRect(); return { x: (cx - r.left) / scale, y: (cy - r.top) / scale }; };
+
+  /* ---------------- covers ---------------- */
+  const imgs = new Map();
+  function coverImg(url, onload) {
+    if (!url) return null;
+    let im = imgs.get(url);
+    if (!im) { im = new Image(); im.crossOrigin = "anonymous"; im.src = url; imgs.set(url, im); }
+    if (onload) { if (im.complete && im.naturalWidth) onload(im); else im.addEventListener("load", () => onload(im), { once: true }); }
+    return im;
+  }
+  function avgColour(im) {
+    try { const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d"); g.drawImage(im, 0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0] * .8 | 0},${d[1] * .8 | 0},${d[2] * .8 | 0})`; }
+    catch { return null; }
+  }
+  const fallbackColour = i => `hsl(${(i * 47) % 360} 50% 40%)`;
+
+  /* ---------------- the shelf ---------------- */
+  let recs = [];
+  function paintSpine(canvas, i, base) {
+    const s = state.sounds[i], g = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+    g.fillStyle = base; g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(255,255,255,.85)"; g.fillRect(0, H * 0.03, W, H * 0.012); g.fillRect(0, H * 0.955, W, H * 0.012);
+    g.save(); g.translate(W * 0.68, H - H * 0.06); g.rotate(-Math.PI / 2);
+    g.fillStyle = "#fff"; g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 2;
+    g.font = `900 ${Math.max(9, W * 0.42)}px Chivo`;
+    g.fillText(((s && s.title) || "…").slice(0, 38), 0, 0, H * 0.86);
+    g.restore();
+  }
+  function buildShelf() {
+    els.shelf.replaceChildren(); recs = [];
+    const n = Math.min(state.sounds.length, MAX_RECORDS);
+    if (!n) return;
+    const t = Math.max(0.012 * PPM, Math.min(0.026 * PPM, (SLOT.width * 0.62) / n)), gap = 0.8;
+    const groupW = n * (t + gap), g0 = Math.round((SLOT.width - groupW) / 2);
+    const frag = document.createDocumentFragment();
+    const filler = (x, w, lean) => {
+      const f = document.createElement("div"); f.className = "filler";
+      const h = REC_H - rand() * 0.012 * PPM, c = shade(SPINES[Math.floor(rand() * SPINES.length)], 0.55 + rand() * 0.45), band = 10 + rand() * 50;
+      f.style.cssText = `left:${x}px;width:${w}px;height:${h}px;background:linear-gradient(180deg, transparent ${band}%, rgba(0,0,0,.18) ${band}% ${band + 6}%, transparent ${band + 6}%), linear-gradient(90deg, rgba(0,0,0,.25), rgba(255,255,255,.08) 45%, rgba(0,0,0,.3)), ${c};` + (lean ? `transform:rotate(${lean}deg);` : "");
+      frag.appendChild(f);
+    };
+    const fw = () => (0.0035 + rand() * 0.0045) * PPM;
+    let x = 3;
+    while (x < g0 - 3) { const w = fw(); if (x + w > g0 - 1) break; filler(x, w); x += w + 0.4; }
+    for (let k = 0; k < n; k++) {
+      const el = document.createElement("div"); el.className = "rec"; el.tabIndex = 0;
+      el.style.cssText = `left:${g0 + k * (t + gap)}px;width:${t}px;height:${REC_H}px;transform-origin:50% 50% ${-REC_D / 2}px;`;
+      const spine = document.createElement("div"); spine.className = "face spine";
+      const cv = document.createElement("canvas"); cv.width = Math.round(t * 3); cv.height = Math.round(REC_H * 3); spine.appendChild(cv);
+      const cover = document.createElement("div"); cover.className = "face cover"; cover.style.cssText = `width:${REC_D}px;height:${REC_H}px;`;
+      const back = document.createElement("div"); back.className = "face back"; back.style.cssText = `width:${REC_D}px;height:${REC_H}px;`;
+      const top = document.createElement("div"); top.className = "face top"; top.style.height = REC_D + "px";
+      el.append(spine, cover, back, top);
+      const url = art(state.sounds[k]);
+      if (url) cover.style.backgroundImage = back.style.backgroundImage = `url("${url}")`;
+      paintSpine(cv, k, fallbackColour(k));
+      coverImg(url, im => { const c = avgColour(im); if (c) paintSpine(cv, k, c); });
+      const r = { i: k, el, pull: 0, pullTarget: 0, hover: 0, yaw: 0 };
+      el._rec = r;
+      el.setAttribute("aria-label", `Record ${k + 1}: ${state.sounds[k].title || "loading"}. Enter to play.`);
+      recs.push(r); frag.appendChild(el);
+    }
+    x = g0 + groupW + 1;
+    let leanLeft = 4;
+    while (x < SLOT.width - 5) {
+      const w = fw(), remaining = SLOT.width - 5 - x;
+      if (remaining < 0.1 * PPM && leanLeft > 0) { filler(x, w, 4 + (4 - leanLeft) * 5); leanLeft--; x += w + 0.012 * PPM; continue; }
+      filler(x, w); x += w + 0.4;
+    }
+    els.shelf.appendChild(frag);
+    markDeck();
+  }
+  const markDeck = () => recs.forEach(r => { r.el.classList.toggle("ondeck", r.i === state.current); if (r.i !== state.current && r.pullTarget === PROUD_ON) r.pullTarget = 0; if (r.i === state.current && r.pullTarget < PROUD_ON) r.pullTarget = PROUD_ON; });
+
+  /* ---------------- title card ---------------- */
+  let tagFor = null;
+  function showTag(r, hint) {
+    const s = state.sounds[r.i]; if (!s) return;
+    if (tagFor !== r) { els.tagArtist.textContent = (s.user && s.user.username) || "Track " + (r.i + 1); els.tagTitle.textContent = s.title || "Loading…"; }
+    tagFor = r;
+    els.tagHint.textContent = hint || (r.i === state.current ? "On the turntable now" : "Drag down to pull it out");
+    els.tag.classList.add("show");
+  }
+  const hideTag = () => { els.tag.classList.remove("show"); tagFor = null; };
+  function placeTag() {
+    if (!tagFor) return;
+    const box = (carried && carried.r === tagFor ? carried.el : tagFor.el).getBoundingClientRect(), o = els.outer.getBoundingClientRect();
+    els.tag.style.left = box.left + box.width / 2 - o.left + "px";
+    els.tag.style.top = Math.max(96, box.top - o.top) + "px";
+    els.tagMeter.style.width = (carried && carried.r === tagFor ? 100 : Math.min(100, tagFor.pull * 100)) + "%";
+  }
+
+  /* ---------------- pulling + carrying ---------------- */
+  let drag = null, carried = null;
+  const flights = new Set();
+  const nearPlatter = p => { const dx = (p.x - PLATTER.x) / (PLATTER.rx * 1.35), dy = (p.y - PLATTER.y) / (PLATTER.ry * 3.2); return dx * dx + dy * dy < 1; };
+
+  els.shelf.addEventListener("pointerover", e => { const el = e.target.closest(".rec"); if (el && !drag) { el._rec.hover = 1; showTag(el._rec); } });
+  els.shelf.addEventListener("pointerout", e => { const el = e.target.closest(".rec"); if (el && !drag) { el._rec.hover = 0; if (el._rec.pullTarget < 0.3) hideTag(); } });
+  els.shelf.addEventListener("pointerdown", e => {
+    const el = e.target.closest(".rec"); if (!el || e.button !== 0) return;
+    e.preventDefault();
+    const r = el._rec;
+    drag = { kind: "rec", r, x0: e.clientX, y0: e.clientY, start: r.pullTarget, moved: false, id: e.pointerId };
+    r.pullTarget = Math.max(r.pullTarget, 0.06);
+    showTag(r);
+    try { el.setPointerCapture(e.pointerId); } catch {}
+  });
+  els.disc.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || state.current < 0) return;
+    e.preventDefault();
+    drag = { kind: "disc", x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId };
+    try { els.disc.setPointerCapture(e.pointerId); } catch {}
+  });
+  addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true;
+    const p = toStage(e.clientX, e.clientY);
+    if (drag.kind === "arm") {
+      if (state.needle) liftNeedle(false);          // picking the arm up lifts the needle
+      armTarget = nearestFrame(p);
+      els.tonearm.setAttribute("aria-valuenow", armTarget);
+      return;
+    }
+    if (drag.kind === "rec") {
+      const r = drag.r;
+      if (!carried) {
+        const pull = Math.min(1, drag.start + Math.max(0, dy) / PULL_PX + Math.abs(dx) / (PULL_PX * 3));
+        r.pullTarget = Math.max(0.06, pull);
+        showTag(r);
+        if (pull >= 1) startCarry(r, p);
+      } else { carried.tx = p.x; carried.ty = p.y; const near = nearPlatter(p); els.glow.classList.toggle("on", near); showTag(r, near ? "Let go to play it" : "Drop it on the turntable"); }
+    } else if (drag.kind === "disc") {
+      if (!carried && Math.hypot(dx, dy) > 12) startCarryDisc(p);
+      if (carried) { carried.tx = p.x; carried.ty = p.y; }
+    }
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    els.glow.classList.remove("on");
+    const p = toStage(e.clientX, e.clientY);
+    if (d.kind === "arm") {
+      els.stage.classList.remove("arm-drag");
+      if (!d.moved) { toggleNeedle(); return; }
+      if (armTarget >= GS && state.current >= 0) dropNeedle();
+      else { armTarget = 0; if (state.current >= 0) setHint("<b>Set the needle down</b> on the record to play it"); }
+      return;
+    }
+    if (d.kind === "rec") {
+      const r = d.r, rest = r.i === state.current ? PROUD_ON : 0;
+      if (!d.moved) { r.pullTarget = d.start > 0.3 ? rest : 0.55; if (r.pullTarget < 0.3) hideTag(); else showTag(r); return; }
+      if (carried && carried.r === r) { if (nearPlatter(p)) dropOnDeck(r); else returnToShelf(r); }
+      else { r.pullTarget = rest; hideTag(); }
+    } else if (d.kind === "disc") {
+      if (!d.moved || !carried) { toggleNeedle(); return; }
+      const c = carried; carried = null;
+      if (nearPlatter(p)) { c.el.remove(); els.discWrap.hidden = false; setHint("<b>Drag the tonearm</b> onto the record to play it"); }
+      else { c.el.style.transition = "opacity .25s"; c.el.style.opacity = 0; setTimeout(() => c.el.remove(), 260); takeOffDeck(); }
+    }
+  }
+  addEventListener("pointerup", endDrag);
+  addEventListener("pointercancel", endDrag);
+  els.shelf.addEventListener("dblclick", e => { const el = e.target.closest(".rec"); if (el) putOnDeck(el._rec.i); });
+  els.shelf.addEventListener("keydown", e => { const el = e.target.closest(".rec"); if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); putOnDeck(el._rec.i); } });
+  els.shelf.addEventListener("focusin", e => { const el = e.target.closest(".rec"); if (el) { el._rec.hover = 1; showTag(el._rec); } });
+  els.shelf.addEventListener("focusout", e => { const el = e.target.closest(".rec"); if (el) { el._rec.hover = 0; hideTag(); } });
+
+  function armHit(p) {
+    const k = Math.round(armFrame), s = ARM.stylus[k], P = ARM.pivot;
+    const vx = s[0] - P[0], vy = s[1] - P[1], t = Math.max(0, Math.min(1, ((p.x - P[0]) * vx + (p.y - P[1]) * vy) / (vx * vx + vy * vy)));
+    const dx = p.x - (P[0] + vx * t), dy = p.y - (P[1] + vy * t);
+    return Math.hypot(dx, dy) < 26 || Math.hypot(p.x - s[0], p.y - s[1]) < 40;
+  }
+  const nearestFrame = p => { let best = 0, bd = Infinity; ARM.stylus.forEach((s, k) => { const d = Math.hypot(p.x - s[0], p.y - s[1]); if (d < bd) { bd = d; best = k; } }); return best; };
+  els.stage.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    const p = toStage(e.clientX, e.clientY);
+    if (!armHit(p)) return;
+    e.preventDefault(); e.stopPropagation();
+    drag = { kind: "arm", x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId, wasDown: state.needle };
+    els.stage.classList.add("arm-drag");
+    try { els.stage.setPointerCapture(e.pointerId); } catch {}
+  }, { capture: true });
+  els.stage.addEventListener("pointermove", e => {
+    if (drag) return;
+    els.stage.classList.toggle("arm-hover", armHit(toStage(e.clientX, e.clientY)));
+  });
+  els.tonearm.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleNeedle(); } });
+
+  function makeCarried(cls) {
+    const el = document.createElement("div");
+    el.className = "carried" + (cls ? " " + cls : "");
+    el.style.width = el.style.height = CARRY + "px";
+    el.style.margin = `${-CARRY / 2}px 0 0 ${-CARRY / 2}px`;
+    el.innerHTML = '<div class="peek"></div>';
+    els.carry.appendChild(el);
+    return el;
+  }
+  function startCarry(r, p) {
+    const box = r.el.getBoundingClientRect(), start = toStage(box.left + box.width / 2, box.top + box.height / 2);
+    const el = makeCarried();
+    el.style.backgroundImage = `url("${art(state.sounds[r.i])}")`;
+    el.querySelector(".peek").style.background = `radial-gradient(circle, #333 0 5%, transparent 5.5%), radial-gradient(circle, transparent 0 16%, #111 34.5%), repeating-radial-gradient(circle, #151515 0 1.5px, #262626 1.5px 3px)`;
+    carried = { r, el, x: start.x, y: start.y, tx: p.x, ty: p.y, s: 0.4, ts: 1, rot: 0 };
+    r.el.classList.add("gone");
+    els.hint.style.opacity = 0;
+    showTag(r, "Drop it on the turntable");
+  }
+  function startCarryDisc(p) {
+    const el = makeCarried("vinyl");
+    el.querySelector(".peek").style.background = `radial-gradient(circle, #ccc 0 2%, transparent 2.5%), radial-gradient(circle, transparent 0 33%, #111 33.5%), repeating-radial-gradient(circle, #151515 0 1.5px, #262626 1.5px 3px), url("${art(state.sounds[state.current])}") center/34% no-repeat`;
+    carried = { r: null, el, x: PLATTER.x, y: PLATTER.y, tx: p.x, ty: p.y, s: 0.9, ts: 0.9, rot: 0 };
+    els.discWrap.hidden = true;
+    if (state.needle) liftNeedle();
+  }
+  function dropOnDeck(r) {
+    const c = carried; carried = null;
+    c.tx = PLATTER.x; c.ty = PLATTER.y - PLATTER.ry; c.ts = 0.4; flights.add(c);
+    setTimeout(() => { c.el.remove(); flights.delete(c); }, 280);
+    r.el.classList.remove("gone"); r.pull = 0.3; r.pullTarget = PROUD_ON;
+    hideTag();
+    putOnDeck(r.i);
+  }
+  function returnToShelf(r) {
+    const c = carried; carried = null;
+    const box = r.el.getBoundingClientRect(), home = toStage(box.left + box.width / 2, box.top + box.height / 2);
+    c.tx = home.x; c.ty = home.y; c.ts = 0.35; flights.add(c);
+    setTimeout(() => { c.el.remove(); flights.delete(c); r.el.classList.remove("gone"); r.pull = 1; r.pullTarget = r.i === state.current ? PROUD_ON : 0; }, 260);
+    hideTag();
+  }
+
+  /* ---------------- deck ---------------- */
+  let spinAngle = 0, spinSpeed = 0, dropY = 0;
+  function putOnDeck(i, keepNeedle) {
+    if (!state.widget || !state.sounds[i]) return;
+    state.current = i; state.rel = 0; state.pos = 0; state.finished = false;
+    state.duration = state.sounds[i].duration || 0;
+    const url = art(state.sounds[i]);
+    els.label.style.backgroundImage = url ? `url("${url}")` : "";
+    els.label.style.backgroundColor = fallbackColour(i);
+    els.discWrap.hidden = false; dropY = -PLATTER.ry * 5;
+    markDeck();
+    if (keepNeedle && state.needle) { state.loaded = i; return; }     // record changer: the player already moved on
+    if (state.needle) liftNeedle();
+    setHint("<b>Drag the tonearm</b> onto the record to play it");
+  }
+  function setHint(html) { els.hint.innerHTML = html; els.hint.style.opacity = 1; }
+
+  /* ---------------- the needle ---------------- */
+  let armFrame = 0, armTarget = 0;
+  function dropNeedle() {
+    // wherever the needle lands, the arm settles into the lead-in groove and the song plays from the top
+    if (state.current < 0) { armTarget = 0; return; }
+    const i = state.current;
+    state.needle = true; armTarget = GS; state.rel = 0; state.pos = 0; state.finished = false;
+    els.hint.style.opacity = 0;
+    const go = () => { if (state.current !== i || !state.needle) return; state.widget.seekTo(0); state.widget.play(); };
+    if (state.loaded !== i) { state.loaded = i; state.widget.skip(i); setTimeout(go, 450); }
+    else go();
+  }
+  function liftNeedle(toRest = true) {
+    state.needle = false;
+    if (state.widget) state.widget.pause();
+    if (toRest) armTarget = 0;
+  }
+  function takeOffDeck(silent) {
+    if (state.widget && !silent) state.widget.pause();
+    state.needle = false; armTarget = 0;
+    state.current = -1; state.rel = 0; state.finished = false;
+    els.discWrap.hidden = true;
+    state.playing = false;
+    markDeck();
+  }
+  function toggleNeedle() { if (!state.widget || state.current < 0) return; if (state.needle) liftNeedle(); else dropNeedle(); }
+
+  /* ---------------- TV ---------------- */
+  const tv = els.tv.getContext("2d");
+  let tvT = 0;
+  function drawTv(dt) {
+    tvT += dt;
+    const W = els.tv.width, H = els.tv.height, g = tv;
+    g.fillStyle = "#0e1224"; g.fillRect(0, 0, W, H);
+    const s = state.sounds[state.current];
+    if (s) {
+      const im = coverImg(art(s));
+      if (im && im.complete && im.naturalWidth) g.drawImage(im, 48, 70, 270, 270); else { g.fillStyle = "#e98aa2"; g.fillRect(48, 70, 270, 270); }
+      g.fillStyle = "#ffd6e0"; g.font = "700 24px Chivo"; g.fillText(((s.user && s.user.username) || "").toUpperCase().slice(0, 22), 345, 102);
+      g.fillStyle = "#fff"; g.font = "900 40px Fraunces"; wrap(g, s.title || "", 345, 152, 330, 44, 3);
+      g.fillStyle = "#9fd0ff"; g.font = "40px VT323"; g.fillText(state.finished ? "END OF SIDE" : fmt(state.pos) + " / " + fmt(state.duration), 345, 330);
+      g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(48, 372, 624, 9);
+      g.fillStyle = "#e98aa2"; g.fillRect(48, 372, 624 * state.rel, 9);
+      g.fillStyle = state.playing ? "#9fd0ff" : "#ffd6e0"; g.font = "36px VT323";
+      g.fillText(state.playing ? "▶ NOW PLAYING" : (tvT % 1.4) < 0.9 ? "DROP THE NEEDLE ▸" : "", 48, 430);
+      g.textAlign = "right"; g.fillText("TRK " + String(state.current + 1).padStart(2, "0"), 672, 430); g.textAlign = "left";
+    } else {
+      g.textAlign = "center";
+      g.fillStyle = "#fff"; g.font = "900 52px Fraunces"; wrap(g, state.title, W / 2, 170, 600, 56, 2);
+      g.fillStyle = "#ffd6e0"; g.font = "700 22px Chivo"; g.fillText(state.by ? "SELECTED BY " + state.by.toUpperCase() : "", W / 2, 312);
+      g.fillStyle = (tvT % 1.4) < 0.9 ? "#9fd0ff" : "rgba(159,208,255,.3)"; g.font = "38px VT323"; g.fillText("PULL A RECORD FROM THE SHELF", W / 2, 396);
+      g.textAlign = "left";
+    }
+    g.fillStyle = "rgba(0,0,0,.2)"; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
+  }
+  function wrap(g, text, x, y, maxW, lh, maxLines) {
+    const words = String(text).split(/\s+/); let line = "", n = 0;
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (g.measureText(test).width > maxW && line) { if (n === maxLines - 1) { g.fillText(line + "…", x, y + n * lh); return; } g.fillText(line, x, y + n * lh); n++; line = w; }
+      else line = test;
+    }
+    g.fillText(line, x, y + n * lh);
+  }
+
+  /* ---------------- animation loop ---------------- */
+  let last = performance.now(), tvTimer = 0;
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    for (const r of recs) {
+      const held = drag && drag.r === r;
+      r.pull = damp(r.pull, r.pullTarget, held ? 22 : 9, dt);
+      const hov = damp(r.hoverV || 0, r.hover && !held ? 1 : 0, 12, dt); r.hoverV = hov;
+      r.yaw = damp(r.yaw, r.pull > 0.62 ? -Math.min(1, (r.pull - 0.62) / 0.38) * 78 : 0, 12, dt);
+      const z = r.pull * (REC_D * 1.1) + hov * REC_D * 0.06, lift = -r.pull * REC_H * 0.07 - hov * 2;
+      r.el.style.transform = `translate3d(0, ${lift.toFixed(2)}px, ${z.toFixed(2)}px) rotateY(${r.yaw.toFixed(2)}deg)`;
+      r.el.style.setProperty("--rv", Math.min(1, r.pull * 5).toFixed(2));
+      r.el.style.zIndex = r.pull > 0.02 || hov > 0.02 ? 50 + Math.round(r.pull * 10) : 1;
+    }
+    if (carried) {
+      const c = carried;
+      c.x = damp(c.x, c.tx, 16, dt); c.y = damp(c.y, c.ty, 16, dt); c.s = damp(c.s, c.ts, 10, dt);
+      c.rot = damp(c.rot, (c.tx - c.x) * 0.1, 8, dt);
+      c.el.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.s}) rotate(${c.rot}deg)`;
+    }
+    for (const c of flights) {
+      c.x = damp(c.x, c.tx, 14, dt); c.y = damp(c.y, c.ty, 14, dt); c.s = damp(c.s, c.ts, 12, dt);
+      c.el.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.s})`;
+    }
+    if (state.needle && state.playing && !(drag && drag.kind === "arm")) armTarget = relToFrame(state.rel);
+    armFrame = damp(armFrame, armTarget, drag && drag.kind === "arm" ? 30 : 6, dt);
+    els.tonearm.style.backgroundPosition = `${-Math.round(armFrame) * ARM.frameW}px 0`;
+    const motor = state.current >= 0 && !els.discWrap.hidden;
+    spinSpeed = damp(spinSpeed, motor ? 200 : 0, motor ? 2.5 : 1.6, dt);   // 33 1/3 rpm
+    spinAngle = (spinAngle + spinSpeed * dt) % 360;
+    els.spin.style.transform = `rotate(${spinAngle}deg)`;
+    dropY = damp(dropY, 0, 9, dt);
+    els.discWrap.style.transform = `translateY(${dropY.toFixed(2)}px)`;
+    els.discWrap.style.opacity = Math.min(1, 1.3 + dropY / (PLATTER.ry * 5));
+    placeTag();
+    tvTimer += dt; if (tvTimer > 1 / 15) { drawTv(tvTimer); tvTimer = 0; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------------- SoundCloud ---------------- */
+  async function loadPlaylist(url) {
+    setStatus("Pulling records from SoundCloud…");
+    takeOffDeck(true);
+    state.sounds = []; state.fillTries = 0;
+    buildShelf();
+    let widgetSrc = url;
+    try {
+      const r = await fetch("https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(url));
+      if (!r.ok) throw new Error(r.status);
+      const o = await r.json();
+      const m = (o.title || "").match(/^(.*) by (.*)$/);
+      state.title = m ? m[1] : (o.title || "Record Room");
+      state.by = o.author_name || (m && m[2]) || "";
+      const src = (o.html || "").match(/src="([^"]+)"/);
+      if (src) { const inner = new URL(src[1].replace(/&amp;/g, "&")).searchParams.get("url"); if (inner) widgetSrc = inner; }
+    } catch {
+      setStatus("Couldn't find that playlist. Check the link is public and starts with https://soundcloud.com/", true);
+      return;
+    }
+    document.title = state.title + " · Record Room";
+    const params = new URLSearchParams({ url: widgetSrc, auto_play: "false", visual: "false", color: "#e98aa2", hide_related: "true",
+      show_comments: "false", show_reposts: "false", show_teaser: "false", sharing: "false", buying: "false", download: "false" });
+    els.host.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    iframe.title = "SoundCloud player"; iframe.allow = "autoplay; encrypted-media";
+    iframe.src = "https://w.soundcloud.com/player/?" + params;
+    els.host.appendChild(iframe);
+    const w = SC.Widget(iframe), E = SC.Widget.Events;
+    state.widget = w;
+    w.bind(E.READY, () => fetchSounds());
+    w.bind(E.PLAY, onPlay);
+    w.bind(E.PAUSE, () => { state.playing = false; });
+    w.bind(E.FINISH, () => { state.playing = false; if (!els.auto.checked) { state.finished = true; state.needle = false; armTarget = 0; } });
+    w.bind(E.ERROR, () => setStatus("SoundCloud couldn't play that track. It may be blocked from embedding.", true));
+    w.bind(E.PLAY_PROGRESS, p => { state.rel = p.relativePosition || 0; state.pos = p.currentPosition || 0; });
+    store.set("vinylroom:url", url);
+  }
+  function fetchSounds() {
+    const w = state.widget;
+    w.getSounds(list => {
+      if (state.widget !== w) return;
+      const prevMissing = state.sounds.filter(s => !s.title).length, prevLen = state.sounds.length;
+      state.sounds = list || [];
+      const missing = state.sounds.filter(s => !s.title).length;
+      if (!state.sounds.length) {
+        if (state.fillTries++ < 12) { setTimeout(() => state.widget === w && fetchSounds(), 700); return; }
+        setStatus("SoundCloud found this playlist but won't hand over its tracks. It's empty, private, or the uploader turned off embedding. Try another link.", true);
+        return;
+      }
+      if (!drag && !carried && (prevLen !== state.sounds.length || prevMissing !== missing)) buildShelf();
+      const extra = state.sounds.length > MAX_RECORDS ? ` The shelf holds the first ${MAX_RECORDS}.` : "";
+      setStatus((missing ? `Loading sleeves… ${state.sounds.length - missing} of ${state.sounds.length}.` : `${state.sounds.length} records on the shelf.`) + extra);
+      if (missing && state.fillTries++ < 20) setTimeout(() => state.widget === w && fetchSounds(), 1500);
+    });
+  }
+  function onPlay() {
+    state.widget.getCurrentSoundIndex(idx => {
+      if (idx !== state.current) {
+        if (els.auto.checked && state.needle && state.current >= 0 && state.sounds[idx]) { putOnDeck(idx, true); state.playing = true; return; }
+        state.widget.pause(); return;
+      }
+      if (!state.needle) { state.widget.pause(); return; }        // the needle is up: no sound
+      state.widget.getCurrentSound(s => { if (s && s.duration) state.duration = s.duration; });
+      state.finished = false; state.playing = true;
+    });
+  }
+
+  els.form.addEventListener("submit", e => {
+    e.preventDefault();
+    const url = els.url.value.trim();
+    if (!/^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i.test(url)) { setStatus("That doesn't look like a SoundCloud link. It should start with https://soundcloud.com/", true); return; }
+    loadPlaylist(url);
+  });
+  const qs = new URLSearchParams(location.search).get("url");
+  const start = qs || store.get("vinylroom:url") || DEFAULT_URL;
+  els.url.value = start;
+  els.loading.classList.add("done");
+  document.fonts.load("900 20px Chivo").finally(() => loadPlaylist(start));
+  window.__room = { state, get recs() { return recs; }, putOnDeck, get carried() { return carried; }, S };   // for debugging
+})();
+</script>
+</body>
+</html>

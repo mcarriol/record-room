@@ -1,0 +1,9 @@
+{
+  "routes": [
+    { "src": "/(index\\.html)?", "dest": "/api/page" },
+    { "handle": "filesystem" }
+  ],
+  "functions": {
+    "api/page.js": { "includeFiles": "index.html" }
+  }
+}

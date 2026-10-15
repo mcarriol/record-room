@@ -1,0 +1,9 @@
+data/
+work/
+blender/
+renders/
+.vercel
+node_modules/
+.env*
+.DS_Store
+__pycache__/

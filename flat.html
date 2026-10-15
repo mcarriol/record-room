@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Basement Hi-Fi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&family=Chivo:wght@400;700;900&family=VT323&display=swap">
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<style>
+/* Layout: one-point-perspective basement at night. Console + turntable dead centre on the back wall,
+   floor speakers either side, coffee table piled with records in the foreground. Stage is drawn at a
+   fixed design size and scaled to fit; a portrait arrangement takes over on phones. */
+:root {
+  color-scheme: dark;
+  --walnut: #4a2e1b;
+  --walnut-dark: #2a1a10;
+  --teak: #8a5a30;
+  --rug: #a8521f;             /* burnt-orange shag */
+  --cream: #f3e6c8;
+  --ink: #1a120c;
+  --neon: #ff4fa3;
+  --neon-2: #3fe8ff;
+  --lcd: #ffb347;
+  --muted: #b89a78;
+  --font-neon: "Monoton", "Chivo", system-ui, sans-serif;
+  --font-body: "Chivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-lcd: "VT323", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: #140c07;
+  color: var(--cream);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--neon-2); outline-offset: 3px; }
+
+/* ---------- Stage ---------- */
+.stage-wrap { position: relative; width: 100%; overflow: hidden; background: #0d0805; }
+.stage {
+  position: absolute; left: 0; top: 0;
+  width: 1200px; height: 760px;
+  transform-origin: 0 0;
+  overflow: hidden;
+  --bx1: 9%; --bx2: 91%; --by1: 4%; --by2: 62%; --fy: 78%;
+  user-select: none; -webkit-user-select: none;
+}
+.stage.portrait { width: 760px; height: 1150px; --bx1: 6%; --bx2: 94%; --by1: 3%; --by2: 52%; --fy: 62%; }
+
+.surface { position: absolute; inset: 0; }
+.ceiling { clip-path: polygon(0 0, 100% 0, var(--bx2) var(--by1), var(--bx1) var(--by1)); background: linear-gradient(180deg, #0b0705, #1d130c); }
+.back {
+  clip-path: polygon(var(--bx1) var(--by1), var(--bx2) var(--by1), var(--bx2) var(--by2), var(--bx1) var(--by2));
+  background:
+    repeating-linear-gradient(90deg, var(--walnut) 0 58px, #3d2515 58px 60px, var(--walnut-dark) 60px 62px, #553520 62px 118px, var(--walnut-dark) 118px 120px);
+}
+.wall-l { clip-path: polygon(0 0, var(--bx1) var(--by1), var(--bx1) var(--by2), 0 var(--fy)); background: repeating-linear-gradient(90deg, #26170d 0 22px, #1c110a 22px 24px); }
+.wall-r { clip-path: polygon(100% 0, var(--bx2) var(--by1), var(--bx2) var(--by2), 100% var(--fy)); background: repeating-linear-gradient(90deg, #26170d 0 22px, #1c110a 22px 24px); }
+.floor {
+  clip-path: polygon(var(--bx1) var(--by2), var(--bx2) var(--by2), 100% var(--fy), 100% 100%, 0 100%, 0 var(--fy));
+  background:
+    radial-gradient(circle at 30% 40%, rgba(255,200,140,.10) 0 1px, transparent 2px) 0 0/6px 5px,
+    radial-gradient(circle at 70% 60%, rgba(0,0,0,.28) 0 1px, transparent 2px) 0 0/5px 4px,
+    linear-gradient(180deg, #2b1a0e, #4a2c16 40%, #3a2211);
+}
+.baseboard { clip-path: polygon(var(--bx1) calc(var(--by2) - 1.2%), var(--bx2) calc(var(--by2) - 1.2%), var(--bx2) var(--by2), var(--bx1) var(--by2)); background: #1a0f08; }
+.rug {
+  position: absolute; left: 50%; top: 79%; width: 76%; height: 26%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(255,230,180,.16) 0 1px, transparent 2px) 0 0/5px 4px,
+    radial-gradient(circle at 60% 60%, rgba(0,0,0,.22) 0 1px, transparent 2px) 0 0/4px 4px,
+    radial-gradient(ellipse, #c46a2c 0 45%, var(--rug) 46% 62%, #7a3a15 63% 70%, #c46a2c 71%);
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.portrait .rug { top: 80%; width: 96%; height: 30%; }
+
+.item { position: absolute; }
+
+/* window with blinds */
+.window { left: 150px; top: 80px; width: 230px; height: 210px; cursor: pointer;
+  background: linear-gradient(180deg, #1a0f3d 0%, #612a6e 45%, #ff7a59 72%, #ffc46b 80%, #2a1433 81%);
+  border: 10px solid #5e3b20; box-shadow: inset 0 0 0 3px #2b1a0e, 0 8px 18px rgba(0,0,0,.5);
+  overflow: hidden; }
+.window::before { /* city skyline */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
+  background:
+    linear-gradient(90deg, #120a1c 0 12%, transparent 12% 15%, #120a1c 15% 30%, transparent 30% 33%, #120a1c 33% 40%, transparent 40% 44%, #120a1c 44% 62%, transparent 62% 65%, #120a1c 65% 80%, transparent 80% 83%, #120a1c 83%);
+  clip-path: polygon(0 40%, 12% 40%, 12% 10%, 30% 10%, 30% 55%, 40% 55%, 40% 0, 62% 0, 62% 35%, 80% 35%, 80% 20%, 100% 20%, 100% 100%, 0 100%);
+}
+.window .blinds { position: absolute; inset: 0;
+  background: repeating-linear-gradient(180deg, #d9c9a3 0 11px, rgba(0,0,0,.25) 11px 13px);
+  transform-origin: top; transition: transform .6s ease; }
+.window.open .blinds { transform: scaleY(.14); }
+.window .cord { position: absolute; right: 16px; top: 0; width: 2px; height: 70%; background: #cbb88f; }
+.portrait .window { left: 70px; top: 60px; width: 170px; height: 160px; }
+
+.neon {
+  left: 340px; top: 58px; width: 520px;
+  margin: 0; text-align: center;
+  font-family: var(--font-neon);
+  font-size: 50px; line-height: 1.05; font-weight: 400;
+  color: #ffe3f1;
+  text-shadow: 0 0 4px #fff, 0 0 12px var(--neon), 0 0 28px var(--neon), 0 0 60px var(--neon);
+  text-wrap: balance;
+  animation: hum 7s infinite;
+}
+.neon.long { font-size: 34px; }
+.neon.xlong { font-size: 26px; }
+.neon small {
+  display: block; margin-top: 10px;
+  font-family: var(--font-body); font-weight: 700;
+  font-size: 13px; letter-spacing: .3em; text-transform: uppercase;
+  color: var(--neon-2); text-shadow: 0 0 8px var(--neon-2);
+}
+@keyframes hum { 0%, 93%, 96%, 100% { opacity: 1 } 94% { opacity: .55 } 95% { opacity: .9 } }
+.portrait .neon { left: 250px; top: 60px; width: 460px; font-size: 44px; }
+.portrait .neon.long { font-size: 32px; }
+.portrait .neon.xlong { font-size: 24px; }
+
+.poster { left: 885px; top: 95px; width: 110px; height: 150px;
+  background:
+    radial-gradient(circle at 70% 26%, #ffcc4d 0 18%, transparent 18.5%),
+    repeating-linear-gradient(0deg, transparent 0 7px, #ff4fa3 7px 9px) 0 50%/100% 40% no-repeat,
+    linear-gradient(180deg, #1c0b3a 55%, #3b0f4a);
+  border: 5px solid var(--cream); box-shadow: 0 10px 22px rgba(0,0,0,.55);
+  transform: rotate(-2.5deg);
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px;
+  font: 900 11px/1 var(--font-body); letter-spacing: .3em; color: var(--neon-2); }
+.clock { left: 1010px; top: 120px; width: 60px; height: 60px; border-radius: 50%;
+  background: radial-gradient(circle, var(--cream) 60%, #d6a64a 61% 68%, #8a5a1c 69%);
+  box-shadow: 0 6px 14px rgba(0,0,0,.5); }
+.clock i { position: absolute; left: 50%; bottom: 50%; width: 2px; background: var(--ink); transform-origin: bottom; border-radius: 2px; margin-left: -1px; }
+.clock .h { height: 14px; } .clock .m { height: 21px; }
+.portrait .poster, .portrait .clock, .portrait .floor-lamp { display: none; }
+
+/* floor speakers */
+.speaker { top: 250px; width: 116px; height: 310px;
+  background: linear-gradient(90deg, #3c2515, #5b3920 12%, #5b3920 88%, #2d1b0e);
+  border-radius: 4px; padding: 12px 10px 16px;
+  box-shadow: 0 18px 30px rgba(0,0,0,.6);
+  display: flex; flex-direction: column; justify-content: space-around; align-items: center;
+}
+.speaker::before { content: ""; position: absolute; inset: 12px 10px 16px; border-radius: 3px;
+  background: repeating-linear-gradient(0deg, #1e140d 0 2px, #2c1f15 2px 4px); }
+.speaker i { position: relative; border-radius: 50%;
+  background: radial-gradient(circle, #3a3a3a 0 12%, #0e0e0e 14% 55%, #2b2b2b 57% 66%, #121212 68%);
+  box-shadow: 0 0 0 3px rgba(0,0,0,.35); }
+.speaker i.tw { width: 34px; height: 34px; } .speaker i.woof { width: 80px; height: 80px; }
+.playing-room .speaker i.woof { animation: thump .47s ease-in-out infinite; }
+@keyframes thump { 50% { transform: scale(1.06); } }
+.speaker.l { left: 245px; } .speaker.r { left: 840px; }
+.portrait .speaker { top: 330px; width: 100px; height: 280px; }
+.portrait .speaker.l { left: 26px; } .portrait .speaker.r { left: 634px; }
+
+.lava { left: 872px; top: 142px; width: 46px; height: 110px; pointer-events: none; }
+.lava .glass { position: absolute; left: 8px; right: 8px; top: 14px; bottom: 24px;
+  background: linear-gradient(90deg, #7a1a3a, #ff6a3d 50%, #7a1a3a);
+  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
+  box-shadow: 0 0 30px rgba(255,106,61,.6); overflow: hidden; }
+.lava .blob { position: absolute; border-radius: 50%; background: #ffd23f; animation: rise 9s ease-in-out infinite; }
+.lava .blob:nth-child(1) { width: 12px; height: 15px; left: 9px; animation-duration: 11s; }
+.lava .blob:nth-child(2) { width: 9px; height: 10px; left: 14px; animation-delay: -4s; }
+.lava .blob:nth-child(3) { width: 10px; height: 9px; left: 7px; animation-delay: -7s; animation-duration: 13s; }
+@keyframes rise { 0%,100% { top: 95%; } 50% { top: -10%; } }
+.lava .cap, .lava .foot { position: absolute; background: linear-gradient(90deg, #555, #ddd 45%, #444); }
+.lava .cap { left: 13px; right: 13px; top: 4px; height: 12px; clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%); }
+.lava .foot { left: 3px; right: 3px; bottom: 0; height: 26px; clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%); }
+.lava-glow { position: absolute; left: 895px; top: 190px; width: 260px; height: 260px; margin: -130px 0 0 -130px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,106,61,.22), transparent 70%); pointer-events: none; }
+.portrait .lava { left: 660px; top: 222px; } .portrait .lava-glow { left: 683px; top: 270px; }
+
+/* floor lamp (click to toggle) */
+.floor-lamp { left: 1020px; top: 170px; width: 100px; height: 430px; cursor: pointer; }
+.floor-lamp .shade { position: absolute; left: 10px; top: 0; width: 80px; height: 64px;
+  background: linear-gradient(180deg, #f6d9a0, #d9a55c);
+  clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%);
+  box-shadow: 0 0 0 transparent; transition: filter .3s; }
+.floor-lamp .pole { position: absolute; left: 48px; top: 64px; width: 4px; bottom: 16px; background: linear-gradient(90deg, #6d5a3b, #e6d6a8, #6d5a3b); }
+.floor-lamp .base { position: absolute; left: 22px; bottom: 0; width: 56px; height: 16px; border-radius: 50%; background: radial-gradient(ellipse at 50% 30%, #6d5a3b, #2a2015); }
+.lamp-light { position: absolute; left: 1070px; top: 200px; width: 700px; height: 700px; margin: -350px 0 0 -350px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,200,120,.30), rgba(255,170,90,.10) 35%, transparent 65%);
+  pointer-events: none; transition: opacity .4s; mix-blend-mode: screen; }
+.lights-off .lamp-light { opacity: 0; }
+.lights-off .floor-lamp .shade { filter: brightness(.45); }
+
+/* ---------- Console + turntable ---------- */
+.console { left: 390px; top: 440px; width: 420px; }
+.console-top {
+  position: absolute; left: 0; bottom: 100%; width: 420px; height: 300px;
+  transform-origin: 50% 100%;
+  transform: perspective(1100px) rotateX(52deg);
+  background: repeating-linear-gradient(92deg, #6b4526 0 3px, #5e3b20 3px 5px, #71492a 5px 9px);
+  border-radius: 6px 6px 0 0;
+  box-shadow: inset 0 0 0 4px #2b1a0e;
+  display: flex; align-items: center; justify-content: center;
+}
+.console-front {
+  height: 110px; border-radius: 0 0 4px 4px;
+  background: linear-gradient(180deg, #4b2f1a, #3a2414);
+  box-shadow: 0 22px 28px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.08);
+  display: grid; grid-template-columns: 1fr 120px; gap: 10px; padding: 12px;
+}
+.console-legs { display: flex; justify-content: space-between; padding: 0 22px; }
+.console-legs i { width: 12px; height: 34px; background: linear-gradient(90deg, #2a190c, #5e3b20, #2a190c); transform: skewX(6deg); }
+.console-legs i:last-child { transform: skewX(-6deg); }
+.doors { background: repeating-linear-gradient(90deg, #5b3920 0 5px, #2e1c0f 5px 7px); border-radius: 3px; position: relative; }
+.doors::after { content: ""; position: absolute; left: 50%; top: 40%; width: 2px; height: 20%; background: #d8c49a; box-shadow: -8px 0 0 #d8c49a; }
+.portrait .console { left: 150px; top: 560px; width: 460px; }
+.portrait .console-top { width: 460px; height: 330px; }
+
+.receiver { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+  background: linear-gradient(180deg, #d9d4ca, #aaa49a); border-radius: 3px; padding: 7px;
+  box-shadow: inset 0 1px 0 #fff; min-width: 0; }
+.vfd { background: #120a05; border-radius: 3px; padding: 5px 8px; min-width: 0; overflow: hidden;
+  box-shadow: inset 0 0 12px rgba(0,0,0,.9);
+  font-family: var(--font-lcd); color: var(--lcd); text-shadow: 0 0 6px rgba(255,179,71,.7); }
+.vfd .line1 { font-size: 20px; line-height: 1.1; white-space: nowrap; overflow: hidden; }
+.vfd .line1 span { display: inline-block; padding-left: 100%; animation: marquee 14s linear infinite; }
+.vfd .line1 span.still { padding-left: 0; animation: none; }
+@keyframes marquee { to { transform: translateX(-100%); } }
+.vfd .line2 { display: flex; justify-content: space-between; gap: 8px; font-size: 17px; opacity: .85; font-variant-numeric: tabular-nums; }
+.meters { display: flex; gap: 5px; }
+.meter { width: 44px; background: linear-gradient(180deg, #fff4d6, #f0d9a0); border-radius: 3px; position: relative; overflow: hidden; box-shadow: inset 0 0 0 2px #6d675f; }
+.meter::before { content: "VU"; position: absolute; bottom: 3px; width: 100%; text-align: center; font: 700 8px/1 var(--font-body); color: #5a3a20; }
+.meter i { position: absolute; left: 50%; bottom: 11px; width: 1.5px; height: 30px; margin-left: -.75px; background: #b21e1e; transform-origin: bottom center; transform: rotate(-40deg); transition: transform .12s ease-out; }
+
+.turntable { container-type: inline-size; width: 380px; }
+.portrait .turntable { width: 420px; }
+.plinth {
+  position: relative; width: 100%; aspect-ratio: 460/340;
+  border-radius: 1.6cqw;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1), transparent 30%),
+    repeating-linear-gradient(92deg, #3b2616 0 3px, #33200f 3px 5px, #412a18 5px 9px);
+  box-shadow: inset 0 0 0 .6cqw #1a0f07, 0 1.5cqw 3cqw rgba(0,0,0,.55);
+  transition: box-shadow .2s;
+}
+.plinth.hot { box-shadow: inset 0 0 0 .6cqw #1a0f07, 0 0 0 4px var(--neon-2), 0 0 40px rgba(63,232,255,.6); }
+.platter { position: absolute; left: 5.5%; top: 7.5%; width: 63%; aspect-ratio: 1; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, #e0dbd2 0 2deg, #7c776f 2deg 4deg);
+  box-shadow: 0 1cqw 2cqw rgba(0,0,0,.6); }
+.platter::before { content: ""; position: absolute; inset: 2.5%; border-radius: 50%; background: repeating-radial-gradient(circle, #1b1b1b 0 .7cqw, #262626 .7cqw 1.4cqw); }
+.disc { position: absolute; inset: 2%; border-radius: 50%;
+  background: radial-gradient(circle, transparent 0 17.5%, #0c0c0c 18% 19%, transparent 19.5%), repeating-radial-gradient(circle, #111 0 .25cqw, #1c1c1c .25cqw .5cqw), #111;
+  box-shadow: 0 .4cqw 1cqw rgba(0,0,0,.7);
+  opacity: 0; transform: scale(.9); transition: opacity .25s, transform .25s;
+  cursor: grab; touch-action: none; }
+.disc.loaded { opacity: 1; transform: scale(1); }
+.disc .spin { position: absolute; inset: 0; border-radius: 50%; animation: spin 1.8s linear infinite; animation-play-state: paused; }
+.disc.playing .spin { animation-play-state: running; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.disc .label { position: absolute; inset: 32%; border-radius: 50%; background: var(--neon) center/cover no-repeat; box-shadow: 0 0 0 .3cqw #0b0b0b; }
+.disc .label::after { content: ""; position: absolute; left: 50%; top: 8%; width: 30%; height: 6%; margin-left: -15%; background: rgba(243,230,200,.8); border-radius: 1cqw; }
+.disc .sheen { position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 30deg, transparent 0 8%, rgba(255,255,255,.14) 12%, transparent 17% 50%, rgba(255,255,255,.1) 62%, transparent 67%); }
+.spindle { position: absolute; left: 50%; top: 50%; width: 2.4%; aspect-ratio: 1; margin: -1.2% 0 0 -1.2%; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, #8d8a85); z-index: 2; }
+.drop-hint { position: absolute; left: 5.5%; top: 7.5%; width: 63%; aspect-ratio: 1; display: grid; place-items: center; text-align: center;
+  font: 900 3.6cqw/1.3 var(--font-body); letter-spacing: .18em; text-transform: uppercase; color: rgba(243,230,200,.6); pointer-events: none; padding: 18%; }
+
+.tonearm { --arm: 0deg; position: absolute; left: 88.04%; top: 17.94%; width: 0; height: 0; z-index: 5; }
+.tonearm .base { position: absolute; width: 11cqw; height: 11cqw; left: -5.5cqw; top: -5.5cqw; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f1efe9, #9b978f 60%, #5a5751); box-shadow: 0 1cqw 1.6cqw rgba(0,0,0,.5); }
+.tonearm .swing { position: absolute; left: 0; top: 0; width: 0; height: 0; transform: rotate(var(--arm)); transition: transform .9s cubic-bezier(.5,.1,.3,1); cursor: pointer; }
+.tonearm.tracking .swing { transition: transform .4s linear; }
+.tonearm .rod { position: absolute; left: -.8cqw; top: -9cqw; width: 1.6cqw; height: 58cqw; background: linear-gradient(90deg, #8b877f, #f4f2ec 45%, #9e9a92); border-radius: 1cqw; box-shadow: .8cqw .8cqw 1cqw rgba(0,0,0,.45); }
+.tonearm .weight { position: absolute; left: -2.8cqw; top: -13cqw; width: 5.6cqw; height: 6cqw; background: linear-gradient(90deg, #333, #777 45%, #2a2a2a); border-radius: 1cqw; }
+.tonearm .head { position: absolute; left: -2.4cqw; top: 49cqw; width: 4.8cqw; height: 8cqw; background: linear-gradient(90deg, #111, #3a3a3a 50%, #111); border-radius: .6cqw .6cqw 1cqw 1cqw; transform: rotate(-18deg); transform-origin: top center; }
+.tonearm .rest { position: absolute; left: -1.6cqw; top: 50cqw; width: 3.2cqw; height: 3.2cqw; background: #1a1a1a; border-radius: .4cqw; z-index: -1; }
+.deck-controls { position: absolute; right: 6%; bottom: 5%; display: flex; gap: 2cqw; align-items: center; pointer-events: none; }
+.deck-controls .spd { font: 700 2.4cqw/1 var(--font-body); color: #f0e6d2; background: #120b06; padding: .8cqw 1.4cqw; border-radius: .6cqw; }
+.deck-controls .spd.on { color: var(--lcd); box-shadow: 0 0 1cqw rgba(255,179,71,.6); }
+.pilot { width: 2.2cqw; height: 2.2cqw; border-radius: 50%; background: #4a1d1d; }
+.pilot.on { background: #ff4040; box-shadow: 0 0 1.4cqw #ff4040; }
+
+/* ---------- Coffee table + record piles ---------- */
+.table { left: 40px; top: 668px; width: 470px; z-index: 3; }
+.table-top {
+  position: absolute; left: 0; bottom: 100%; width: 470px; height: 330px;
+  transform-origin: 50% 100%;
+  transform: perspective(1000px) rotateX(50deg);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), transparent),
+    repeating-linear-gradient(90deg, #7a4e2a 0 4px, #6d4424 4px 7px, #83552f 7px 12px);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 5px #3b2414, inset 0 0 40px rgba(0,0,0,.35);
+}
+.table-apron { height: 24px; background: linear-gradient(180deg, #5a3a20, #3d2614); border-radius: 0 0 5px 5px; box-shadow: 0 16px 24px rgba(0,0,0,.6); }
+.table-legs { display: flex; justify-content: space-between; padding: 0 26px; }
+.table-legs i { width: 14px; height: 52px; background: linear-gradient(90deg, #2a190c, #6b4526, #2a190c); }
+.portrait .table { left: 50px; top: 1060px; width: 660px; }
+.portrait .table-top { width: 660px; height: 420px; }
+
+.piles { position: absolute; inset: 22px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 6px; }
+.pile { position: relative; }
+.sleeve {
+  position: absolute; left: 0; top: 0;
+  width: var(--sz, 104px); height: var(--sz, 104px);
+  background: var(--cream) center/cover no-repeat;
+  border-radius: 2px;
+  box-shadow: 1px 2px 0 #d8ccb0, 2px 4px 0 rgba(0,0,0,.35), 4px 8px 14px rgba(0,0,0,.45);
+  transform: translate(var(--x), var(--y)) rotate(var(--r));
+  transition: transform .18s ease, box-shadow .18s ease, opacity .2s;
+  cursor: grab; touch-action: none;
+}
+.sleeve:hover, .sleeve:focus-visible { z-index: 40; transform: translate(var(--x), calc(var(--y) - 16px)) rotate(0deg) scale(1.06); box-shadow: 0 22px 26px rgba(0,0,0,.55); }
+.sleeve.on-deck { opacity: .18; }
+.sleeve .fallback { position: absolute; inset: 0; padding: 8px; display: flex; align-items: flex-end; font: 900 11px/1.15 var(--font-body); color: var(--ink); overflow: hidden; }
+.portrait .piles { --sz: 136px; }
+.table-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; font: 700 20px/1.4 var(--font-body); color: rgba(243,230,200,.7); }
+
+/* floating label while browsing the table */
+.tag { position: absolute; z-index: 50; left: 0; top: 0; pointer-events: none;
+  background: var(--cream); color: var(--ink); border-radius: 3px; padding: 6px 9px; max-width: 280px;
+  font: 700 14px/1.25 var(--font-body); box-shadow: 0 8px 18px rgba(0,0,0,.5);
+  transform: translate(-50%, calc(-100% - 12px)); opacity: 0; transition: opacity .12s; }
+.tag.show { opacity: 1; }
+.tag em { display: block; font-style: normal; font-weight: 400; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #6b5540; }
+
+/* room lighting */
+.shade-over { position: absolute; inset: 0; pointer-events: none; z-index: 60;
+  background: radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(0,0,0,.55)); transition: background .4s; }
+.lights-off .shade-over { background: radial-gradient(ellipse 70% 60% at 50% 42%, rgba(0,0,0,.2) 30%, rgba(0,0,0,.72)); }
+.neon-glow { position: absolute; left: 600px; top: 110px; width: 900px; height: 400px; margin: -200px 0 0 -450px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(ellipse, rgba(255,79,163,.2), transparent 65%); }
+.portrait .neon-glow { left: 480px; top: 130px; }
+
+/* ---------- Control bar ---------- */
+.bar { max-width: 1200px; margin: 0 auto; padding: 20px 16px 36px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+@media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr); } }
+.bar h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.loader { display: flex; gap: 8px; flex-wrap: wrap; }
+.loader input { flex: 1 1 240px; min-width: 0; background: rgba(0,0,0,.45); color: var(--cream);
+  border: 1px solid rgba(243,230,200,.25); border-radius: 4px; padding: 10px 12px; }
+.loader input::placeholder { color: var(--muted); }
+.btn { background: linear-gradient(180deg, #e9e4da, #a9a39a); color: var(--ink); border: 0; border-radius: 4px;
+  padding: 10px 16px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; font-size: 12px;
+  box-shadow: 0 2px 0 #6d675f, inset 0 1px 0 #fff; cursor: pointer; }
+.btn:active { transform: translateY(2px); box-shadow: none; }
+.status { width: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: #ff8a8a; }
+.help { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; color: var(--cream); }
+.help b { color: var(--lcd); font-weight: 700; }
+.opts { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.player-box { background: #1b1714; border-radius: 4px; padding: 8px; box-shadow: inset 0 2px 8px rgba(0,0,0,.8); }
+.player-box iframe { display: block; width: 100%; height: 166px; border: 0; border-radius: 2px; background: #2a2622; }
+.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+/* drag ghost */
+.ghost { position: fixed; left: 0; top: 0; width: 120px; height: 120px; pointer-events: none; z-index: 100; transform: translate(-50%, -50%); }
+.ghost .g-disc { position: absolute; inset: 2%; border-radius: 50%; background: repeating-radial-gradient(circle, #111 0 1.2px, #1f1f1f 1.2px 2.4px); box-shadow: 0 10px 30px rgba(0,0,0,.7); transition: transform .25s ease; }
+.ghost .g-disc b { position: absolute; inset: 32%; border-radius: 50%; background: var(--neon) center/cover; }
+.ghost .g-sleeve { position: absolute; inset: 0; background: var(--cream) center/cover; border-radius: 2px; box-shadow: 0 16px 36px rgba(0,0,0,.7); transition: transform .25s ease; }
+.ghost.out .g-disc { transform: translateX(46%); }
+.ghost.out .g-sleeve { transform: translateX(-30%) rotate(-6deg); }
+.ghost.home { transition: left .3s ease, top .3s ease, opacity .3s, width .3s, height .3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .neon, .lava .blob, .vfd .line1 span, .playing-room .speaker i.woof { animation: none; }
+  .vfd .line1 span { padding-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="stage-wrap" id="wrap">
+  <div class="stage" id="stage">
+    <div class="surface ceiling"></div>
+    <div class="surface back"></div>
+    <div class="surface wall-l"></div>
+    <div class="surface wall-r"></div>
+    <div class="surface floor"></div>
+    <div class="surface baseboard"></div>
+    <div class="rug"></div>
+    <div class="neon-glow"></div>
+
+    <div class="item window" id="window" role="button" tabindex="0" aria-label="Window blinds: open or close"><div class="blinds"></div><div class="cord"></div></div>
+    <h1 class="item neon" id="neon">Side A<small id="neon-sub">Loading the room</small></h1>
+    <div class="item poster" aria-hidden="true">RADIO</div>
+    <div class="item clock" aria-hidden="true"><i class="h" style="transform:rotate(-60deg)"></i><i class="m" style="transform:rotate(40deg)"></i></div>
+
+    <div class="item speaker l" aria-hidden="true"><i class="tw"></i><i class="woof"></i><i class="woof"></i></div>
+    <div class="item speaker r" aria-hidden="true"><i class="tw"></i><i class="woof"></i><i class="woof"></i></div>
+    <div class="lava-glow"></div>
+    <div class="item lava" aria-hidden="true">
+      <div class="cap"></div>
+      <div class="glass"><span class="blob"></span><span class="blob"></span><span class="blob"></span></div>
+      <div class="foot"></div>
+    </div>
+
+    <div class="item console">
+      <div class="console-top">
+        <div class="turntable">
+          <div class="plinth" id="plinth">
+            <div class="platter" id="platter">
+              <div class="disc" id="disc" role="button" tabindex="-1" aria-label="Record on the turntable. Press Delete to take it off.">
+                <div class="spin"><div class="label" id="label"></div></div>
+                <div class="sheen"></div>
+              </div>
+              <div class="spindle"></div>
+            </div>
+            <div class="drop-hint" id="drop-hint">Drop a record here</div>
+            <div class="tonearm" id="tonearm">
+              <div class="base"></div>
+              <div class="rest"></div>
+              <div class="swing" id="swing" role="button" tabindex="0" aria-label="Tonearm: lift or drop the needle">
+                <div class="weight"></div><div class="rod"></div><div class="head"></div>
+              </div>
+            </div>
+            <div class="deck-controls"><span class="spd on">33</span><span class="spd">45</span><span class="pilot" id="pilot"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="console-front">
+        <div class="receiver">
+          <div class="vfd" aria-live="polite">
+            <div class="line1"><span id="vfd-title" class="still">NO RECORD</span></div>
+            <div class="line2"><span id="vfd-time">--:-- / --:--</span><span id="vfd-track">TRK --</span></div>
+          </div>
+          <div class="meters" aria-hidden="true"><div class="meter"><i id="vu-l"></i></div><div class="meter"><i id="vu-r"></i></div></div>
+        </div>
+        <div class="doors" aria-hidden="true"></div>
+      </div>
+      <div class="console-legs" aria-hidden="true"><i></i><i></i></div>
+    </div>
+
+    <div class="item floor-lamp" id="lamp" role="button" tabindex="0" aria-label="Floor lamp: turn on or off"><div class="shade"></div><div class="pole"></div><div class="base"></div></div>
+    <div class="lamp-light"></div>
+
+    <div class="item table" aria-label="Coffee table with records">
+      <div class="table-top">
+        <div class="piles" id="piles"></div>
+        <div class="table-empty" id="table-empty">Records from your playlist will be stacked here.</div>
+      </div>
+      <div class="table-apron"></div>
+      <div class="table-legs" aria-hidden="true"><i></i><i></i></div>
+    </div>
+
+    <div class="tag" id="tag"></div>
+    <div class="shade-over"></div>
+  </div>
+</div>
+
+<section class="bar">
+  <div>
+    <h2>Load a playlist</h2>
+    <form class="loader" id="loader">
+      <input id="url" type="url" required placeholder="https://soundcloud.com/artist/sets/playlist-name" aria-label="SoundCloud playlist link">
+      <button class="btn" type="submit">Stack the table</button>
+      <p class="status" id="status" role="status"></p>
+    </form>
+    <ul class="help">
+      <li><b>Drag</b> a sleeve from the coffee table onto the turntable to play it.</li>
+      <li><b>Hover</b> over a stack to pull each sleeve up and read it.</li>
+      <li><b>Click the tonearm</b> to lift the needle, and again to drop it.</li>
+      <li><b>Drag the record off</b> the platter to stop it. The lamp and the blinds click too.</li>
+    </ul>
+    <div class="opts"><label><input type="checkbox" id="autochange"> Auto-change: play the next record when one ends</label></div>
+  </div>
+  <div>
+    <h2>Source</h2>
+    <div class="player-box" id="player-host"><iframe title="SoundCloud player" src="about:blank"></iframe></div>
+    <p class="note">Playback runs through SoundCloud's player. Private playlists and tracks with embedding turned off won't load.</p>
+  </div>
+</section>
+
+<script>
+(() => {
+  const DEFAULT_URL = "https://soundcloud.com/alumomusic/sets/synthwave";
+  const $ = id => document.getElementById(id);
+  const els = {
+    wrap: $("wrap"), stage: $("stage"), form: $("loader"), url: $("url"), status: $("status"),
+    neon: $("neon"), piles: $("piles"), tableEmpty: $("table-empty"), tag: $("tag"),
+    plinth: $("plinth"), platter: $("platter"), disc: $("disc"), label: $("label"),
+    dropHint: $("drop-hint"), tonearm: $("tonearm"), swing: $("swing"), pilot: $("pilot"),
+    vfdTitle: $("vfd-title"), vfdTime: $("vfd-time"), vfdTrack: $("vfd-track"),
+    vuL: $("vu-l"), vuR: $("vu-r"), host: $("player-host"), auto: $("autochange"),
+    lamp: $("lamp"), win: $("window"),
+  };
+
+  const ARM_REST = 0, ARM_OUTER = 34, ARM_INNER = 50;
+  const state = { sounds: [], current: -1, playing: false, widget: null, rel: 0, duration: 0, fillTries: 0, scale: 1 };
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const art = s => {
+    const u = (s && (s.artwork_url || (s.user && s.user.avatar_url))) || "";
+    return u ? u.replace("-large.", "-t500x500.") : "";
+  };
+  const hue = i => (i * 47) % 360;
+  const cover = i => { const a = art(state.sounds[i]); return a ? `url("${a}")` : `linear-gradient(135deg, hsl(${hue(i)} 70% 60%), hsl(${hue(i) + 40} 70% 40%))`; };
+  const fmt = ms => {
+    if (!ms && ms !== 0) return "--:--";
+    const t = Math.floor(ms / 1000);
+    return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+  };
+  const setStatus = (msg, err) => { els.status.textContent = msg || ""; els.status.classList.toggle("err", !!err); };
+
+  /* ---------- Fit the stage to the window ---------- */
+  function layout() {
+    const w = els.wrap.clientWidth;
+    const portrait = w < 720;
+    els.stage.classList.toggle("portrait", portrait);
+    const W = portrait ? 760 : 1200, H = portrait ? 1150 : 760;
+    let s = w / W;
+    if (!portrait) s = Math.min(s, Math.max(0.55, (window.innerHeight - 24) / H));
+    state.scale = s;
+    els.wrap.style.height = H * s + "px";
+    els.stage.style.transform = `translateX(${(w - W * s) / 2}px) scale(${s})`;
+  }
+  window.addEventListener("resize", layout);
+  layout();
+
+  /* ---------- Room toys ---------- */
+  const toggleLamp = () => els.stage.classList.toggle("lights-off");
+  const toggleBlinds = () => els.win.classList.toggle("open");
+  els.lamp.addEventListener("click", toggleLamp);
+  els.win.addEventListener("click", toggleBlinds);
+  for (const [el, fn] of [[els.lamp, toggleLamp], [els.win, toggleBlinds]])
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } });
+
+  /* ---------- Loading a playlist ---------- */
+  async function loadPlaylist(url) {
+    setStatus("Pulling records from SoundCloud…");
+    clearDeck();
+    state.sounds = []; state.fillTries = 0;
+    renderTable();
+
+    // oEmbed resolves short links and gives the playlist title
+    let title = "Side A", by = "", widgetSrc = url;
+    try {
+      const r = await fetch("https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(url));
+      if (!r.ok) throw new Error(r.status);
+      const o = await r.json();
+      const m = (o.title || "").match(/^(.*) by (.*)$/);
+      title = m ? m[1] : (o.title || title);
+      by = o.author_name || (m && m[2]) || "";
+      const src = (o.html || "").match(/src="([^"]+)"/);
+      if (src) {
+        const inner = new URL(src[1].replace(/&amp;/g, "&")).searchParams.get("url");
+        if (inner) widgetSrc = inner;
+      }
+    } catch (e) {
+      setStatus("Couldn't find that playlist. Check the link is public and starts with https://soundcloud.com/", true);
+      return;
+    }
+    els.neon.firstChild.nodeValue = title;
+    els.neon.classList.toggle("long", title.length > 16 && title.length <= 34);
+    els.neon.classList.toggle("xlong", title.length > 34);
+    $("neon-sub").textContent = by ? "Selected by " + by : "Now playing in the basement";
+    document.title = title + " · Basement Hi-Fi";
+
+    const params = new URLSearchParams({
+      url: widgetSrc, auto_play: "false", visual: "false", color: "#ff4fa3",
+      hide_related: "true", show_comments: "false", show_reposts: "false", show_teaser: "false", sharing: "false", buying: "false", download: "false",
+    });
+    els.host.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    iframe.title = "SoundCloud player";
+    iframe.allow = "autoplay; encrypted-media";
+    iframe.src = "https://w.soundcloud.com/player/?" + params;
+    els.host.appendChild(iframe);
+
+    const w = SC.Widget(iframe);
+    state.widget = w;
+    const E = SC.Widget.Events;
+    w.bind(E.READY, () => fetchSounds());
+    w.bind(E.PLAY, onPlay);
+    w.bind(E.PAUSE, () => setPlaying(false));
+    w.bind(E.FINISH, onFinish);
+    w.bind(E.ERROR, () => setStatus("SoundCloud couldn't play that track. It may be blocked from embedding.", true));
+    w.bind(E.PLAY_PROGRESS, p => {
+      state.rel = p.relativePosition || 0;
+      els.vfdTime.textContent = fmt(p.currentPosition) + " / " + fmt(state.duration);
+      if (state.current >= 0 && state.playing) setArm(ARM_OUTER + (ARM_INNER - ARM_OUTER) * state.rel, true);
+    });
+    store.set("vinylroom:url", url);
+  }
+
+  function fetchSounds() {
+    const w = state.widget;
+    w.getSounds(list => {
+      if (state.widget !== w) return;
+      state.sounds = list || [];
+      const missing = state.sounds.filter(s => !s.title).length;
+      if (!state.sounds.length) {
+        // The widget often reports READY before the playlist arrives
+        if (state.fillTries++ < 12) { setTimeout(() => state.widget === w && fetchSounds(), 700); return; }
+        setStatus("SoundCloud found this playlist but won't hand over its tracks. It's empty, private, or the uploader turned off embedding. Try another link.", true);
+        return;
+      }
+      renderTable();
+      setStatus(missing ? "Loading sleeve art… " + (state.sounds.length - missing) + " of " + state.sounds.length : state.sounds.length + " records on the table.");
+      // The widget fills long playlists in lazily; poll until every sleeve has data
+      if (missing && state.fillTries++ < 20) setTimeout(() => state.widget === w && fetchSounds(), 1500);
+    });
+  }
+
+  /* ---------- Coffee table ---------- */
+  function renderTable() {
+    const n = state.sounds.length;
+    els.tableEmpty.hidden = n > 0;
+    els.piles.replaceChildren();
+    if (!n) return;
+    const pileCount = Math.min(6, Math.max(1, Math.ceil(n / 4)));
+    const per = Math.ceil(n / pileCount);
+    // Fill piles in the order that reads naturally: back row first, left to right
+    for (let p = 0; p < pileCount; p++) {
+      const pile = document.createElement("div");
+      pile.className = "pile";
+      const items = state.sounds.slice(p * per, p * per + per);
+      const m = items.length;
+      const step = m > 1 ? Math.min(14, 44 / (m - 1)) : 0;
+      items.forEach((s, j) => {
+        const i = p * per + j;
+        const d = document.createElement("div");
+        d.className = "sleeve" + (i === state.current ? " on-deck" : "");
+        d.tabIndex = 0;
+        d.dataset.i = i;
+        d.style.setProperty("--x", (8 + j * step) + "px");
+        d.style.setProperty("--y", (4 + j * step * 0.55) + "px");
+        d.style.setProperty("--r", (((i * 53) % 13) - 6) * 0.9 + "deg");
+        d.style.backgroundImage = cover(i);
+        if (!art(s)) { const f = document.createElement("div"); f.className = "fallback"; f.textContent = s.title || "Loading…"; d.appendChild(f); }
+        d.setAttribute("aria-label", `Record ${i + 1}: ${s.title || "loading"}. Press Enter to play.`);
+        pile.appendChild(d);
+      });
+      els.piles.appendChild(pile);
+    }
+  }
+
+  function showTag(el) {
+    const i = +el.dataset.i, s = state.sounds[i];
+    if (!s) return;
+    els.tag.innerHTML = "";
+    const em = document.createElement("em"); em.textContent = (s.user && s.user.username) || "Track " + (i + 1);
+    els.tag.append(em, document.createTextNode(s.title || "Loading…"));
+    const r = el.getBoundingClientRect(), st = els.stage.getBoundingClientRect();
+    els.tag.style.left = (r.left + r.width / 2 - st.left) / state.scale + "px";
+    els.tag.style.top = (r.top - st.top) / state.scale + "px";
+    els.tag.classList.add("show");
+  }
+  const hideTag = () => els.tag.classList.remove("show");
+  els.piles.addEventListener("pointerover", e => { const s = e.target.closest(".sleeve"); if (s && !drag) showTag(s); });
+  els.piles.addEventListener("pointerleave", hideTag);
+  els.piles.addEventListener("focusin", e => { const s = e.target.closest(".sleeve"); if (s) showTag(s); });
+  els.piles.addEventListener("focusout", hideTag);
+  els.piles.addEventListener("keydown", e => {
+    const s = e.target.closest(".sleeve");
+    if (s && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); putOnDeck(+s.dataset.i); }
+  });
+  els.piles.addEventListener("dblclick", e => { const s = e.target.closest(".sleeve"); if (s) putOnDeck(+s.dataset.i); });
+
+  /* ---------- Drag & drop ---------- */
+  let drag = null;
+
+  function platterHit(x, y) {
+    // The platter sits on a tilted plane, so its screen footprint is an ellipse
+    const r = els.platter.getBoundingClientRect();
+    const nx = (x - (r.left + r.width / 2)) / (r.width / 2);
+    const ny = (y - (r.top + r.height / 2)) / (r.height / 2);
+    return nx * nx + ny * ny < 1.5;
+  }
+
+  function makeGhost(i, x, y, fromDeck) {
+    const g = document.createElement("div");
+    g.className = "ghost";
+    const size = Math.max(84, 150 * state.scale);
+    g.style.width = g.style.height = size + "px";
+    g.innerHTML = `<div class="g-disc"><b></b></div>${fromDeck ? "" : '<div class="g-sleeve"></div>'}`;
+    g.querySelector(".g-disc b").style.backgroundImage = cover(i);
+    const sl = g.querySelector(".g-sleeve"); if (sl) sl.style.backgroundImage = cover(i);
+    g.style.left = x + "px"; g.style.top = y + "px";
+    document.body.appendChild(g);
+    requestAnimationFrame(() => g.classList.add("out"));
+    return g;
+  }
+
+  function startPointer(e, i, fromDeck, sourceEl) {
+    if (e.button !== undefined && e.button !== 0) return;
+    drag = { i, fromDeck, sourceEl, x0: e.clientX, y0: e.clientY, active: false, id: e.pointerId, ghost: null };
+  }
+  els.piles.addEventListener("pointerdown", e => {
+    const s = e.target.closest(".sleeve"); if (!s) return;
+    e.preventDefault();
+    startPointer(e, +s.dataset.i, false, s);
+  });
+  els.disc.addEventListener("pointerdown", e => {
+    if (state.current < 0) return;
+    e.preventDefault();
+    startPointer(e, state.current, true, els.disc);
+  });
+
+  window.addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.active) {
+      if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+      drag.active = true;
+      hideTag();
+      try { drag.sourceEl.setPointerCapture(e.pointerId); } catch {}
+      drag.ghost = makeGhost(drag.i, e.clientX, e.clientY, drag.fromDeck);
+      if (drag.fromDeck) { els.disc.classList.remove("loaded"); setArm(ARM_REST); }
+      else drag.sourceEl.style.visibility = "hidden";
+    }
+    e.preventDefault();
+    drag.ghost.style.left = e.clientX + "px";
+    drag.ghost.style.top = e.clientY + "px";
+    els.plinth.classList.toggle("hot", !drag.fromDeck && platterHit(e.clientX, e.clientY));
+  }, { passive: false });
+
+  function flyTo(ghost, el, fade) {
+    const r = el.getBoundingClientRect();
+    ghost.classList.add("home");
+    ghost.style.left = r.left + r.width / 2 + "px";
+    ghost.style.top = r.top + r.height / 2 + "px";
+    ghost.classList.remove("out");
+    if (fade) ghost.style.opacity = "0";
+  }
+
+  window.addEventListener("pointerup", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    els.plinth.classList.remove("hot");
+    if (!d.active) return;
+    const onPlatter = platterHit(e.clientX, e.clientY);
+    if (d.fromDeck) {
+      if (onPlatter) {
+        d.ghost.remove(); els.disc.classList.add("loaded");
+        if (state.playing) setArm(ARM_OUTER + (ARM_INNER - ARM_OUTER) * state.rel);
+      } else {
+        const sl = els.piles.querySelector(`.sleeve[data-i="${d.i}"]`);
+        if (sl) flyTo(d.ghost, sl, true); else d.ghost.style.opacity = "0";
+        setTimeout(() => d.ghost.remove(), 320);
+        takeOffDeck();
+      }
+      return;
+    }
+    d.sourceEl.style.visibility = "";
+    if (onPlatter) {
+      flyTo(d.ghost, els.platter, false);
+      d.ghost.style.width = d.ghost.style.height = els.platter.getBoundingClientRect().width + "px";
+      setTimeout(() => d.ghost.remove(), 280);
+      putOnDeck(d.i);
+    } else {
+      d.sourceEl.style.visibility = "hidden";
+      flyTo(d.ghost, d.sourceEl, false);
+      setTimeout(() => { d.ghost.remove(); d.sourceEl.style.visibility = ""; }, 300);
+    }
+  });
+  window.addEventListener("pointercancel", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    els.plinth.classList.remove("hot");
+    if (d.ghost) d.ghost.remove();
+    if (!d.fromDeck) d.sourceEl.style.visibility = "";
+    else if (d.active) els.disc.classList.add("loaded");
+  });
+
+  /* ---------- Deck ---------- */
+  function putOnDeck(i) {
+    if (!state.widget || !state.sounds[i]) return;
+    state.current = i; state.rel = 0;
+    const s = state.sounds[i];
+    els.label.style.backgroundImage = cover(i);
+    els.disc.classList.add("loaded");
+    els.disc.tabIndex = 0;
+    els.dropHint.hidden = true;
+    state.duration = s.duration || 0;
+    setTitle(s, i);
+    markTable();
+    // Needle drops a beat after the record settles
+    setTimeout(() => {
+      if (state.current !== i) return;
+      setArm(ARM_OUTER);
+      state.widget.skip(i);
+      setTimeout(() => state.current === i && state.widget.play(), 350);
+    }, 380);
+  }
+
+  function takeOffDeck() {
+    if (state.widget) state.widget.pause();
+    clearDeck();
+    markTable();
+  }
+
+  function clearDeck() {
+    state.current = -1; state.rel = 0;
+    els.disc.classList.remove("loaded", "playing");
+    els.disc.tabIndex = -1;
+    els.dropHint.hidden = false;
+    setArm(ARM_REST);
+    setPlaying(false);
+    els.vfdTitle.textContent = "NO RECORD"; els.vfdTitle.classList.add("still");
+    els.vfdTime.textContent = "--:-- / --:--"; els.vfdTrack.textContent = "TRK --";
+  }
+
+  function markTable() {
+    els.piles.querySelectorAll(".sleeve").forEach(el => el.classList.toggle("on-deck", +el.dataset.i === state.current));
+  }
+
+  function setTitle(s, i) {
+    const who = s.user && s.user.username ? s.user.username.toUpperCase() + " - " : "";
+    els.vfdTitle.textContent = who + (s.title || "TRACK " + (i + 1)).toUpperCase();
+    els.vfdTitle.classList.remove("still");
+    els.vfdTrack.textContent = "TRK " + String(i + 1).padStart(2, "0");
+    els.vfdTime.textContent = "00:00 / " + fmt(state.duration);
+  }
+
+  function setArm(deg, tracking) {
+    els.tonearm.classList.toggle("tracking", !!tracking);
+    els.tonearm.style.setProperty("--arm", deg + "deg");
+  }
+
+  function setPlaying(on) {
+    state.playing = on;
+    els.disc.classList.toggle("playing", on && state.current >= 0);
+    els.pilot.classList.toggle("on", on);
+    els.stage.classList.toggle("playing-room", on);
+  }
+
+  function onPlay() {
+    state.widget.getCurrentSoundIndex(idx => {
+      if (idx !== state.current) {
+        // The player moved on by itself at the end of a track
+        if (els.auto.checked && state.current >= 0 && state.sounds[idx]) {
+          state.current = idx;
+          const s = state.sounds[idx];
+          els.label.style.backgroundImage = cover(idx);
+          els.disc.classList.add("loaded"); els.dropHint.hidden = true;
+          state.duration = s.duration || 0;
+          setTitle(s, idx); markTable();
+        } else {
+          state.widget.pause();
+          return;
+        }
+      }
+      state.widget.getCurrentSound(s => { if (s && s.duration) state.duration = s.duration; });
+      setPlaying(true);
+      setArm(ARM_OUTER + (ARM_INNER - ARM_OUTER) * state.rel, true);
+    });
+  }
+
+  function onFinish() {
+    setPlaying(false);
+    if (!els.auto.checked) { setArm(ARM_REST); els.vfdTime.textContent = "END OF SIDE"; }
+  }
+
+  // Tonearm: lift = pause, drop = play
+  function toggleNeedle() {
+    if (!state.widget || state.current < 0) return;
+    if (state.playing) { state.widget.pause(); setArm(ARM_REST); }
+    else { setArm(ARM_OUTER + (ARM_INNER - ARM_OUTER) * state.rel); state.widget.play(); }
+  }
+  els.swing.addEventListener("click", toggleNeedle);
+  els.swing.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleNeedle(); } });
+  els.disc.addEventListener("keydown", e => { if (e.key === "Delete" || e.key === "Backspace") takeOffDeck(); });
+
+  /* ---------- VU needles (decorative: the player is cross-origin, so there's no real signal) ---------- */
+  let t = 0;
+  setInterval(() => {
+    t += 1;
+    const base = state.playing ? -8 : -40, j = state.playing ? 22 : 0;
+    els.vuL.style.transform = `rotate(${base + Math.sin(t * .9) * j * .5 + (Math.random() - .5) * j}deg)`;
+    els.vuR.style.transform = `rotate(${base + Math.cos(t * .7) * j * .5 + (Math.random() - .5) * j}deg)`;
+  }, 120);
+
+  /* ---------- Boot ---------- */
+  els.form.addEventListener("submit", e => {
+    e.preventDefault();
+    const url = els.url.value.trim();
+    if (!/^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i.test(url)) {
+      setStatus("That doesn't look like a SoundCloud link. It should start with https://soundcloud.com/", true);
+      return;
+    }
+    loadPlaylist(url);
+  });
+
+  const qs = new URLSearchParams(location.search).get("url");
+  const start = qs || store.get("vinylroom:url") || DEFAULT_URL;
+  els.url.value = start;
+  loadPlaylist(start);
+})();
+</script>
+</body>
+</html>

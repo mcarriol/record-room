@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Record Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;700;900&family=VT323&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap">
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<style>
+/* Layout: the reference photo is the room. Interactive pieces are laid over it in the photo's own pixel space
+   (1232 x 928), and the whole stage scales to fit. Palette is sampled from the photo. */
+:root {
+  color-scheme: light;
+  --wall: #6784c4;
+  --wall-deep: #3e5794;
+  --pink: #e8879f;
+  --pink-ink: #7a2a44;
+  --cream: #f6eee8;
+  --ink: #1f1a2e;
+  --muted: #d7defa;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Chivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--wall-deep); color: var(--cream); font-family: var(--font-body); overflow-x: hidden; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
+
+/* ---------- stage ---------- */
+.viewport { position: relative; width: 100%; overflow: hidden; background: #5f7cc0; }
+.viewport.scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.viewport.scroll::-webkit-scrollbar { display: none; }
+.sizer { position: relative; margin: 0 auto; }
+.stage { position: absolute; left: 0; top: 0; width: 1232px; height: 928px; transform-origin: 0 0; user-select: none; -webkit-user-select: none; }
+.photo { position: absolute; inset: 0; width: 1232px; height: 928px; display: block; pointer-events: none; }
+
+/* shelf slot (eye-level middle bay) */
+.shelf { position: absolute; left: 590px; top: 126px; width: 241px; height: 78px; perspective: 560px; perspective-origin: 120px 150px; }
+.shelf::after { /* contact shadow along the shelf floor */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; pointer-events: none;
+  background: linear-gradient(0deg, rgba(20,24,50,.35), transparent); }
+.filler { position: absolute; bottom: 0; border-radius: 1px 1px 0 0; transform-origin: 0 100%;
+  box-shadow: inset -1px 0 0 rgba(0,0,0,.35), inset 1px 0 0 rgba(255,255,255,.12); }
+.rec { position: absolute; bottom: 0; height: 76px; transform-style: preserve-3d; transform-origin: 50% 50% -38px; cursor: grab; touch-action: none; }
+.rec .face { position: absolute; top: 0; height: 76px; backface-visibility: hidden; }
+.rec .cover, .rec .back, .rec .top { opacity: var(--rv, 0); } /* packed neighbours hide the sides until it comes out */
+.rec .spine { left: 0; width: 100%; overflow: hidden; border-radius: 1px 1px 0 0;
+  box-shadow: inset -1px 0 0 rgba(0,0,0,.4), inset 1px 0 0 rgba(255,255,255,.2); }
+.rec .spine canvas { width: 100%; height: 100%; display: block; }
+.rec .spine::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.28), rgba(255,255,255,.1) 45%, rgba(0,0,0,.3)); }
+.rec .cover { left: 100%; width: 76px; transform-origin: 0 50%; transform: rotateY(90deg); background: #ddd center/cover no-repeat; }
+.rec .back { right: 100%; width: 76px; transform-origin: 100% 50%; transform: rotateY(-90deg); background: #cfc6b8 center/cover no-repeat; filter: brightness(.8); }
+.rec .top { left: 0; top: 0; width: 100%; height: 76px; transform-origin: 50% 0; transform: rotateX(-90deg); background: #e9e1d4; }
+.rec.gone { visibility: hidden; }
+.rec.ondeck .spine { outline: 1.5px solid #ffd6e0; outline-offset: -1px; }
+
+/* turntable overlay: disc sits on the photo's platter, the photo's tonearm is cut out and laid back on top */
+.disc-wrap { position: absolute; left: 493.5px; top: 536px; width: 128px; height: 128px; pointer-events: none; }
+.disc-edge, .disc { position: absolute; inset: 0; border-radius: 50%; transform: scaleY(.19); }
+.disc-edge { top: 2.5px; background: #111; }
+.disc { cursor: grab; pointer-events: auto; overflow: hidden;
+  background: radial-gradient(circle, transparent 0 17%, #0d0d0d 17.5% 19%, transparent 19.5%), repeating-radial-gradient(circle, #151515 0 1px, #232323 1px 2px), #151515; }
+.disc .spin { position: absolute; inset: 0; border-radius: 50%; }
+.disc .label { position: absolute; inset: 33%; border-radius: 50%; background: var(--pink) center/cover no-repeat; box-shadow: 0 0 0 1px #0b0b0b; }
+.disc .label::after { content: ""; position: absolute; left: 47%; top: 47%; width: 6%; height: 6%; border-radius: 50%; background: #ccc; }
+.disc .sheen { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 20deg, transparent 0 10%, rgba(255,255,255,.22) 14%, transparent 19% 55%, rgba(255,255,255,.14) 64%, transparent 69%); }
+.tonearm { position: absolute; left: 585px; top: 570px; pointer-events: none; }
+.drop-glow { position: absolute; left: 557.5px; top: 600px; width: 190px; height: 50px; margin: -25px 0 0 -95px; border-radius: 50%;
+  border: 2px solid #9ff3ff; box-shadow: 0 0 18px 4px rgba(120,235,255,.8), inset 0 0 12px rgba(120,235,255,.6);
+  opacity: 0; transform: scale(.9); transition: opacity .15s, transform .15s; pointer-events: none; }
+.drop-glow.on { opacity: 1; transform: scale(1); }
+
+/* the pink CRT's screen */
+.tv { position: absolute; left: 960px; top: 251px; width: 145px; height: 116px; border-radius: 16px / 14px; overflow: hidden; pointer-events: none; }
+.tv canvas { width: 100%; height: 100%; display: block; }
+.tv::after { content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(ellipse at 35% 25%, rgba(255,255,255,.16), transparent 45%);
+  box-shadow: inset 0 0 14px 4px rgba(0,0,0,.65); }
+
+/* a record being carried across the room */
+.carried { position: absolute; left: 0; top: 0; width: 150px; height: 150px; margin: -75px 0 0 -75px; pointer-events: none; z-index: 80;
+  background: #ddd center/cover no-repeat; border-radius: 2px; box-shadow: 0 26px 40px rgba(20,20,50,.45), 0 0 0 1px rgba(0,0,0,.08); }
+.carried .peek { position: absolute; top: 3%; left: 30%; width: 94%; height: 94%; border-radius: 50%; z-index: -1;
+  background: radial-gradient(circle, #333 0 16%, var(--pink) 16.5% 34%, #111 34.5%), repeating-radial-gradient(circle, #151515 0 1px, #262626 1px 2px); transition: left .3s; }
+.carried.vinyl { background: none; box-shadow: none; }
+.carried.vinyl .peek { left: 0; top: 0; width: 100%; height: 100%; }
+
+/* overlays in screen space */
+.tag { position: absolute; left: 0; top: 0; z-index: 90; pointer-events: none; width: max-content; max-width: min(300px, 76vw);
+  background: var(--cream); color: var(--ink); border-radius: 6px; padding: 10px 14px 11px; box-shadow: 0 14px 30px rgba(31,26,46,.35);
+  transform: translate(-50%, calc(-100% - 14px)) scale(.92); transform-origin: 50% 100%; opacity: 0; transition: opacity .15s, transform .15s; }
+.tag.show { opacity: 1; transform: translate(-50%, calc(-100% - 14px)) scale(1); }
+.tag em { display: block; font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--pink-ink); }
+.tag strong { display: block; font: 900 20px/1.12 var(--font-display); margin-top: 3px; text-wrap: balance; }
+.tag small { display: block; margin-top: 7px; font-size: 12px; color: #6a6480; }
+.tag .meter { height: 3px; margin-top: 8px; background: #e7dfe6; border-radius: 2px; overflow: hidden; }
+.tag .meter i { display: block; height: 100%; width: 0; background: var(--pink); }
+.hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; pointer-events: none;
+  background: rgba(31,26,46,.62); border-radius: 999px; padding: 8px 16px; font-size: 13px; color: var(--cream);
+  white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(6px); transition: opacity .4s; }
+.hint b { color: #ffc6d5; }
+.wrap-outer { position: relative; }
+
+/* ---------- control bar ---------- */
+.bar { max-width: 1200px; margin: 0 auto; padding: 22px 16px 36px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+@media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr); } }
+.bar h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.loader { display: flex; gap: 8px; flex-wrap: wrap; }
+.loader input { flex: 1 1 240px; min-width: 0; background: rgba(255,255,255,.12); color: var(--cream); border: 1px solid rgba(246,238,232,.35); border-radius: 6px; padding: 10px 12px; }
+.loader input::placeholder { color: var(--muted); }
+.btn { background: var(--pink); color: var(--ink); border: 0; border-radius: 6px; padding: 10px 16px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; box-shadow: 0 3px 0 #b85a74; cursor: pointer; }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #b85a74; }
+.status { width: 100%; margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: #ffd0d0; font-weight: 700; }
+.help { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+.help b { color: #ffc6d5; }
+.opts { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.player-box { background: rgba(31,26,46,.35); border-radius: 6px; padding: 8px; }
+.player-box iframe { display: block; width: 100%; height: 166px; border: 0; border-radius: 3px; background: #2a2640; }
+.note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .tag, .drop-glow, .hint { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap-outer" id="outer">
+  <div class="viewport" id="viewport">
+    <div class="sizer" id="sizer">
+      <div class="stage" id="stage">
+        <img class="photo" src="assets/room-plate.jpg" alt="A periwinkle room with a wall of records, a pink credenza, sofa, CRT television and a pink tulip table with a blue turntable" draggable="false">
+        <div class="tv"><canvas id="tv" width="580" height="464"></canvas></div>
+        <div class="shelf" id="shelf"></div>
+        <div class="drop-glow" id="drop-glow"></div>
+        <div class="disc-wrap" id="disc-wrap" hidden>
+          <div class="disc-edge"></div>
+          <div class="disc" id="disc" title="Click to lift the needle, drag off to stop">
+            <div class="spin" id="spin"><div class="label" id="label"></div></div>
+            <div class="sheen"></div>
+          </div>
+        </div>
+        <img class="tonearm" src="assets/tonearm.png" alt="" draggable="false">
+        <div id="carry-layer"></div>
+      </div>
+    </div>
+  </div>
+  <div class="tag" id="tag"><em id="tag-artist"></em><strong id="tag-title"></strong><small id="tag-hint"></small><div class="meter"><i id="tag-meter"></i></div></div>
+  <div class="hint" id="hint"><b>Pull</b> a record off the middle shelf (drag it down) · drop it on the turntable</div>
+</div>
+
+<section class="bar">
+  <div>
+    <h2>Load a playlist</h2>
+    <form class="loader" id="loader">
+      <input id="url" type="url" required placeholder="https://soundcloud.com/artist/sets/playlist-name" aria-label="SoundCloud playlist link">
+      <button class="btn" type="submit">Fill the shelf</button>
+      <p class="status" id="status" role="status"></p>
+    </form>
+    <ul class="help">
+      <li><b>Grab a spine</b> on the middle shelf and drag down. It slides out towards you and its title comes up.</li>
+      <li><b>Keep pulling</b> until it's free, then carry it to the blue turntable on the coffee table.</li>
+      <li><b>Click the record</b> on the turntable to lift or drop the needle. <b>Drag it off</b> to stop.</li>
+      <li><b>Click a spine</b> to peek at it, click again to push it back. Double-click plays it straight away.</li>
+    </ul>
+    <div class="opts"><label><input type="checkbox" id="autochange"> Auto-change: play the next record when one ends</label></div>
+  </div>
+  <div>
+    <h2>Source</h2>
+    <div class="player-box" id="player-host"><iframe title="SoundCloud player" src="about:blank"></iframe></div>
+    <p class="note">Playback runs through SoundCloud's player. Private playlists and tracks with embedding turned off won't load.</p>
+  </div>
+</section>
+
+<script>
+(() => {
+  const DEFAULT_URL = "https://soundcloud.com/alumomusic/sets/synthwave";
+  const STAGE_W = 1232, STAGE_H = 928;
+  const PLATTER = { x: 557.5, y: 600 };
+  const SLOT_W = 241, REC_H = 76, REC_D = 76;
+  const PROUD_ON = 0.14, MAX_RECORDS = 40, PULL_PX = 150;
+  // spine colours sampled from the records in the photo, so the filler blends in
+  const PHOTO_SPINES = ["#68563e", "#261200", "#4e4131", "#6b3c22", "#5e3b27", "#47331b", "#493729", "#7f625a", "#5f5442", "#794e2c", "#90543a", "#9b897d", "#3b3418", "#645b4a", "#c9a36b", "#b8743f", "#d8c7a2", "#8a2f22", "#2c2622", "#a88a5c"];
+
+  const $ = id => document.getElementById(id);
+  const els = { outer: $("outer"), viewport: $("viewport"), sizer: $("sizer"), stage: $("stage"), shelf: $("shelf"), glow: $("drop-glow"),
+    discWrap: $("disc-wrap"), disc: $("disc"), spin: $("spin"), label: $("label"), carry: $("carry-layer"), tv: $("tv"),
+    tag: $("tag"), tagArtist: $("tag-artist"), tagTitle: $("tag-title"), tagHint: $("tag-hint"), tagMeter: $("tag-meter"), hint: $("hint"),
+    form: $("loader"), url: $("url"), status: $("status"), host: $("player-host"), auto: $("autochange") };
+
+  const state = { sounds: [], current: -1, playing: false, finished: false, widget: null, rel: 0, pos: 0, duration: 0, fillTries: 0, title: "Record Room", by: "" };
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+  const art = s => { const u = (s && (s.artwork_url || (s.user && s.user.avatar_url))) || ""; return u ? u.replace("-large.", "-t500x500.") : ""; };
+  const fmt = ms => { if (!ms && ms !== 0) return "--:--"; const t = Math.floor(ms / 1000); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+  const setStatus = (msg, err) => { els.status.textContent = msg || ""; els.status.classList.toggle("err", !!err); };
+  const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+  let seed = 1987; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  /* ---------------- fit the photo ---------------- */
+  let scale = 1, scrolledOnce = false;
+  function layout() {
+    const vw = els.viewport.clientWidth;
+    const narrow = vw < 760;
+    scale = narrow ? Math.min(innerHeight * 0.72, 640) / STAGE_H : Math.min(vw / STAGE_W, (innerHeight * 0.9) / STAGE_H);
+    els.viewport.classList.toggle("scroll", narrow && STAGE_W * scale > vw);
+    els.sizer.style.width = STAGE_W * scale + "px";
+    els.sizer.style.height = els.viewport.style.height = STAGE_H * scale + "px";
+    els.stage.style.transform = `scale(${scale})`;
+    if (narrow && !scrolledOnce) { els.viewport.scrollLeft = 660 * scale - vw / 2; scrolledOnce = true; }
+  }
+  addEventListener("resize", layout); layout();
+  const toStage = (cx, cy) => { const r = els.stage.getBoundingClientRect(); return { x: (cx - r.left) / scale, y: (cy - r.top) / scale }; };
+
+  /* ---------------- covers ---------------- */
+  const imgs = new Map();
+  function coverImg(url, onload) {
+    if (!url) return null;
+    let im = imgs.get(url);
+    if (!im) { im = new Image(); im.crossOrigin = "anonymous"; im.src = url; imgs.set(url, im); }
+    if (onload) { if (im.complete && im.naturalWidth) onload(im); else im.addEventListener("load", () => onload(im), { once: true }); }
+    return im;
+  }
+  function avgColour(im) {
+    try { const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d"); g.drawImage(im, 0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]},${d[1]},${d[2]})`; }
+    catch { return null; }
+  }
+  const fallbackColour = i => `hsl(${(i * 47) % 360} 55% 45%)`;
+
+  /* ---------------- the shelf ---------------- */
+  let recs = [];
+  function paintSpine(canvas, i, base) {
+    const s = state.sounds[i], g = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+    g.fillStyle = base; g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(255,255,255,.85)"; g.fillRect(0, 6, W, 3); g.fillRect(0, H - 9, W, 3);
+    g.save(); g.translate(W * 0.68, H - 16); g.rotate(-Math.PI / 2);
+    g.fillStyle = "#fff"; g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 2;
+    g.font = `900 ${Math.max(9, W * 0.42)}px Chivo`;
+    g.fillText(((s && s.title) || "…").slice(0, 34), 0, 0, H - 30);
+    g.restore();
+  }
+  function buildShelf() {
+    els.shelf.replaceChildren();
+    recs = [];
+    const n = Math.min(state.sounds.length, MAX_RECORDS);
+    if (!n) return;
+    const t = Math.max(5.5, Math.min(15, 175 / n));
+    const gap = 0.7, groupW = n * (t + gap);
+    const g0 = Math.round((SLOT_W - groupW) / 2);
+    const frag = document.createDocumentFragment();
+    const filler = (x, w, lean) => {
+      const f = document.createElement("div");
+      f.className = "filler";
+      const h = REC_H - rand() * 5;
+      const c = PHOTO_SPINES[Math.floor(rand() * PHOTO_SPINES.length)];
+      const band = 10 + rand() * 50;
+      f.style.cssText = `left:${x}px;width:${w}px;height:${h}px;background:linear-gradient(180deg, transparent ${band}%, rgba(0,0,0,.18) ${band}% ${band + 6}%, transparent ${band + 6}%), linear-gradient(90deg, rgba(0,0,0,.25), rgba(255,255,255,.08) 45%, rgba(0,0,0,.3)), ${c};` + (lean ? `transform:rotate(${lean}deg);` : "");
+      frag.appendChild(f);
+    };
+    // filler on the left, the playlist in the middle, filler + a few leaning ones on the right
+    let x = 3;
+    while (x < g0 - 3) { const w = 2.5 + rand() * 3.5; if (x + w > g0 - 1) break; filler(x, w); x += w + 0.4; }
+    for (let k = 0; k < n; k++) {
+      const el = document.createElement("div");
+      el.className = "rec"; el.tabIndex = 0;
+      el.style.left = g0 + k * (t + gap) + "px"; el.style.width = t + "px";
+      const spine = document.createElement("div"); spine.className = "face spine";
+      const cv = document.createElement("canvas"); cv.width = Math.round(t * 4); cv.height = REC_H * 4;
+      spine.appendChild(cv);
+      const cover = document.createElement("div"); cover.className = "face cover";
+      const back = document.createElement("div"); back.className = "face back";
+      const top = document.createElement("div"); top.className = "face top";
+      el.append(spine, cover, back, top);
+      const url = art(state.sounds[k]);
+      if (url) { cover.style.backgroundImage = back.style.backgroundImage = `url("${url}")`; }
+      paintSpine(cv, k, fallbackColour(k));
+      coverImg(url, im => { const c = avgColour(im); if (c) paintSpine(cv, k, c); });
+      const r = { i: k, el, pull: 0, pullTarget: 0, hover: 0, yaw: 0 };
+      el._rec = r;
+      el.setAttribute("aria-label", `Record ${k + 1}: ${state.sounds[k].title || "loading"}. Enter to play.`);
+      recs.push(r); frag.appendChild(el);
+    }
+    x = g0 + groupW + 1;
+    let leanLeft = 3;
+    while (x < SLOT_W - 4) {
+      const w = 2.5 + rand() * 3.5;
+      const remaining = SLOT_W - 4 - x;
+      if (remaining < 26 && leanLeft > 0) { filler(x, w, 4 + (3 - leanLeft) * 5); leanLeft--; x += w + 3; continue; }
+      filler(x, w); x += w + 0.4;
+    }
+    els.shelf.appendChild(frag);
+    markDeck();
+  }
+  const markDeck = () => recs.forEach(r => { r.el.classList.toggle("ondeck", r.i === state.current); if (r.i !== state.current && r.pullTarget === PROUD_ON) r.pullTarget = 0; if (r.i === state.current && r.pullTarget < PROUD_ON) r.pullTarget = PROUD_ON; });
+
+  /* ---------------- tag (title card) ---------------- */
+  let tagFor = null;
+  function showTag(r, hint) {
+    const s = state.sounds[r.i]; if (!s) return;
+    if (tagFor !== r) { els.tagArtist.textContent = (s.user && s.user.username) || "Track " + (r.i + 1); els.tagTitle.textContent = s.title || "Loading…"; }
+    tagFor = r;
+    els.tagHint.textContent = hint || (r.i === state.current ? "On the turntable now" : "Drag down to pull it out");
+    els.tag.classList.add("show");
+  }
+  const hideTag = () => { els.tag.classList.remove("show"); tagFor = null; };
+  function placeTag() {
+    if (!tagFor) return;
+    const box = (carried && carried.r === tagFor ? carried.el : tagFor.el).getBoundingClientRect();
+    const o = els.outer.getBoundingClientRect();
+    els.tag.style.left = box.left + box.width / 2 - o.left + "px";
+    els.tag.style.top = Math.max(96, box.top - o.top) + "px";
+    els.tagMeter.style.width = (carried && carried.r === tagFor ? 100 : Math.min(100, tagFor.pull * 100)) + "%";
+  }
+
+  /* ---------------- pulling + carrying ---------------- */
+  let drag = null, carried = null;
+  const flights = new Set();
+  const nearPlatter = p => { const dx = (p.x - PLATTER.x) / 120, dy = (p.y - PLATTER.y) / 60; return dx * dx + dy * dy < 1; };
+
+  els.shelf.addEventListener("pointerover", e => { const el = e.target.closest(".rec"); if (el && !drag) { el._rec.hover = 1; showTag(el._rec); } });
+  els.shelf.addEventListener("pointerout", e => { const el = e.target.closest(".rec"); if (el && !drag) { el._rec.hover = 0; if (el._rec.pullTarget < 0.3) hideTag(); } });
+  els.shelf.addEventListener("pointerdown", e => {
+    const el = e.target.closest(".rec"); if (!el || e.button !== 0) return;
+    e.preventDefault();
+    const r = el._rec;
+    drag = { kind: "rec", r, x0: e.clientX, y0: e.clientY, start: r.pullTarget, moved: false, id: e.pointerId };
+    r.pullTarget = Math.max(r.pullTarget, 0.06);
+    showTag(r);
+    try { el.setPointerCapture(e.pointerId); } catch {}
+  });
+  els.disc.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || state.current < 0) return;
+    e.preventDefault();
+    drag = { kind: "disc", x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId };
+    try { els.disc.setPointerCapture(e.pointerId); } catch {}
+  });
+  addEventListener("pointermove", e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true;
+    const p = toStage(e.clientX, e.clientY);
+    if (drag.kind === "rec") {
+      const r = drag.r;
+      if (!carried) {
+        const pull = Math.min(1, drag.start + Math.max(0, dy) / PULL_PX + Math.abs(dx) / (PULL_PX * 3));
+        r.pullTarget = Math.max(0.06, pull);
+        showTag(r);
+        if (pull >= 1) startCarry(r, p);
+      } else { carried.tx = p.x; carried.ty = p.y; els.glow.classList.toggle("on", nearPlatter(p)); showTag(r, nearPlatter(p) ? "Let go to play it" : "Drop it on the turntable"); }
+    } else if (drag.kind === "disc") {
+      if (!carried && Math.hypot(dx, dy) > 12) startCarryDisc(p);
+      if (carried) { carried.tx = p.x; carried.ty = p.y; }
+    }
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null;
+    els.glow.classList.remove("on");
+    const p = toStage(e.clientX, e.clientY);
+    if (d.kind === "rec") {
+      const r = d.r, rest = r.i === state.current ? PROUD_ON : 0;
+      if (!d.moved) { r.pullTarget = d.start > 0.3 ? rest : 0.55; if (r.pullTarget < 0.3) hideTag(); else showTag(r); return; }
+      if (carried && carried.r === r) {
+        if (nearPlatter(p)) { dropOnDeck(r); }
+        else returnToShelf(r);
+      } else { r.pullTarget = rest; hideTag(); }
+    } else if (d.kind === "disc") {
+      if (!d.moved || !carried) { toggleNeedle(); return; }
+      const c = carried; carried = null;
+      if (nearPlatter(p)) { c.el.remove(); els.discWrap.hidden = false; if (state.current >= 0) state.widget.play(); }
+      else { c.el.style.transition = "opacity .25s, transform .25s"; c.el.style.opacity = 0; setTimeout(() => c.el.remove(), 260); takeOffDeck(); }
+    }
+  }
+  addEventListener("pointerup", endDrag);
+  addEventListener("pointercancel", endDrag);
+  els.shelf.addEventListener("dblclick", e => { const el = e.target.closest(".rec"); if (el) putOnDeck(el._rec.i); });
+  els.shelf.addEventListener("keydown", e => { const el = e.target.closest(".rec"); if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); putOnDeck(el._rec.i); } });
+  els.shelf.addEventListener("focusin", e => { const el = e.target.closest(".rec"); if (el) { el._rec.hover = 1; showTag(el._rec); } });
+  els.shelf.addEventListener("focusout", e => { const el = e.target.closest(".rec"); if (el) { el._rec.hover = 0; hideTag(); } });
+
+  function startCarry(r, p) {
+    const box = r.el.getBoundingClientRect(), start = toStage(box.left + box.width / 2, box.top + box.height / 2);
+    const el = document.createElement("div");
+    el.className = "carried";
+    el.style.backgroundImage = `url("${art(state.sounds[r.i])}")`;
+    el.innerHTML = '<div class="peek"></div>';
+    el.querySelector(".peek").style.background = `radial-gradient(circle, #333 0 5%, transparent 5.5%), radial-gradient(circle, transparent 0 16%, #111 34.5%), repeating-radial-gradient(circle, #151515 0 1px, #262626 1px 2px)`;
+    els.carry.appendChild(el);
+    carried = { r, el, x: start.x, y: start.y, tx: p.x, ty: p.y, s: 0.5, ts: 1, rot: 0 };
+    r.el.classList.add("gone");
+    els.hint.style.opacity = 0;
+    showTag(r, "Drop it on the turntable");
+  }
+  function startCarryDisc(p) {
+    const el = document.createElement("div");
+    el.className = "carried vinyl";
+    el.innerHTML = '<div class="peek"></div>';
+    const url = art(state.sounds[state.current]);
+    el.querySelector(".peek").style.background = `radial-gradient(circle, #ccc 0 2%, transparent 2.5%), radial-gradient(circle, transparent 0 33%, #111 33.5%), repeating-radial-gradient(circle, #151515 0 1px, #262626 1px 2px), url("${url}") center/34% no-repeat`;
+    els.carry.appendChild(el);
+    carried = { r: null, el, x: PLATTER.x, y: PLATTER.y, tx: p.x, ty: p.y, s: 0.85, ts: 0.85, rot: 0 };
+    els.discWrap.hidden = true;
+    if (state.playing) state.widget.pause();
+  }
+  function dropOnDeck(r) {
+    const c = carried; carried = null;
+    c.tx = PLATTER.x; c.ty = PLATTER.y - 10; c.ts = 0.35; flights.add(c);
+    setTimeout(() => { c.el.remove(); flights.delete(c); }, 280);
+    r.el.classList.remove("gone"); r.pull = 0.3; r.pullTarget = PROUD_ON;
+    hideTag();
+    putOnDeck(r.i);
+  }
+  function returnToShelf(r) {
+    const c = carried; carried = null;
+    const box = r.el.getBoundingClientRect(), home = toStage(box.left + box.width / 2, box.top + box.height / 2);
+    c.tx = home.x; c.ty = home.y; c.ts = 0.4; flights.add(c);
+    setTimeout(() => { c.el.remove(); flights.delete(c); r.el.classList.remove("gone"); r.pull = 1; r.pullTarget = r.i === state.current ? PROUD_ON : 0; }, 260);
+    hideTag();
+  }
+
+  /* ---------------- deck ---------------- */
+  let spinAngle = 0, spinSpeed = 0, dropY = 0;
+  function putOnDeck(i) {
+    if (!state.widget || !state.sounds[i]) return;
+    state.current = i; state.rel = 0; state.pos = 0; state.finished = false;
+    state.duration = state.sounds[i].duration || 0;
+    const url = art(state.sounds[i]);
+    els.label.style.backgroundImage = url ? `url("${url}")` : "";
+    els.label.style.backgroundColor = fallbackColour(i);
+    els.discWrap.hidden = false; dropY = -70;
+    markDeck();
+    els.hint.style.opacity = 0;
+    setTimeout(() => {
+      if (state.current !== i) return;
+      state.widget.skip(i);
+      setTimeout(() => state.current === i && state.widget.play(), 350);
+    }, 450);
+  }
+  function takeOffDeck(silent) {
+    if (state.widget && !silent) state.widget.pause();
+    state.current = -1; state.rel = 0; state.finished = false;
+    els.discWrap.hidden = true;
+    setPlaying(false);
+    markDeck();
+  }
+  const setPlaying = on => { state.playing = on; };
+  function toggleNeedle() {
+    if (!state.widget || state.current < 0) return;
+    if (state.playing) state.widget.pause(); else state.widget.play();
+  }
+
+  /* ---------------- TV ---------------- */
+  const tv = els.tv.getContext("2d");
+  let tvT = 0;
+  function drawTv(dt) {
+    tvT += dt;
+    const W = els.tv.width, H = els.tv.height, g = tv;
+    g.fillStyle = "#0e1224"; g.fillRect(0, 0, W, H);
+    const s = state.sounds[state.current];
+    if (s) {
+      const im = coverImg(art(s));
+      if (im && im.complete && im.naturalWidth) g.drawImage(im, 40, 64, 220, 220); else { g.fillStyle = "#e8879f"; g.fillRect(40, 64, 220, 220); }
+      g.fillStyle = "#ffd6e0"; g.font = "700 22px Chivo"; g.fillText(((s.user && s.user.username) || "").toUpperCase().slice(0, 20), 282, 92);
+      g.fillStyle = "#fff"; g.font = "900 36px Fraunces"; wrap(g, s.title || "", 282, 138, 270, 40, 3);
+      g.fillStyle = "#9fd0ff"; g.font = "36px VT323"; g.fillText(state.finished ? "END OF SIDE" : fmt(state.pos) + " / " + fmt(state.duration), 282, 282);
+      g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(40, 320, 500, 8);
+      g.fillStyle = "#e8879f"; g.fillRect(40, 320, 500 * state.rel, 8);
+      g.fillStyle = state.playing ? "#9fd0ff" : "#ffd6e0"; g.font = "34px VT323";
+      g.fillText(state.playing ? "▶ NOW PLAYING" : "❚❚ NEEDLE UP", 40, 380);
+      g.textAlign = "right"; g.fillText("TRK " + String(state.current + 1).padStart(2, "0"), 540, 380); g.textAlign = "left";
+    } else {
+      g.textAlign = "center";
+      g.fillStyle = "#fff"; g.font = "900 46px Fraunces"; wrap(g, state.title, W / 2, 150, 480, 50, 2);
+      g.fillStyle = "#ffd6e0"; g.font = "700 20px Chivo"; g.fillText(state.by ? "SELECTED BY " + state.by.toUpperCase() : "", W / 2, 286);
+      g.fillStyle = (tvT % 1.4) < 0.9 ? "#9fd0ff" : "rgba(159,208,255,.3)"; g.font = "34px VT323"; g.fillText("PULL A RECORD FROM THE SHELF", W / 2, 360);
+      g.textAlign = "left";
+    }
+    g.fillStyle = "rgba(0,0,0,.2)"; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
+  }
+  function wrap(g, text, x, y, maxW, lh, maxLines) {
+    const words = String(text).split(/\s+/); let line = "", n = 0;
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (g.measureText(test).width > maxW && line) { if (n === maxLines - 1) { g.fillText(line + "…", x, y + n * lh); return; } g.fillText(line, x, y + n * lh); n++; line = w; }
+      else line = test;
+    }
+    g.fillText(line, x, y + n * lh);
+  }
+
+  /* ---------------- animation loop ---------------- */
+  let last = performance.now(), tvTimer = 0;
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    for (const r of recs) {
+      const held = drag && drag.r === r;
+      r.pull = damp(r.pull, r.pullTarget, held ? 22 : 9, dt);
+      const hov = damp(r.hoverV || 0, r.hover && !held ? 1 : 0, 12, dt); r.hoverV = hov;
+      r.yaw = damp(r.yaw, r.pull > 0.62 ? -Math.min(1, (r.pull - 0.62) / 0.38) * 78 : 0, 12, dt);
+      const z = r.pull * (REC_D + 10) + hov * 5;
+      const lift = -r.pull * 5 - hov * 1.5;
+      r.el.style.transform = `translate3d(0, ${lift.toFixed(2)}px, ${z.toFixed(2)}px) rotateY(${r.yaw.toFixed(2)}deg)`;
+      r.el.style.setProperty("--rv", Math.min(1, r.pull * 5).toFixed(2));
+      r.el.style.zIndex = r.pull > 0.02 || hov > 0.02 ? 50 + Math.round(r.pull * 10) : 1;
+    }
+    if (carried) {
+      const c = carried;
+      c.x = damp(c.x, c.tx, 16, dt); c.y = damp(c.y, c.ty, 16, dt); c.s = damp(c.s, c.ts, 10, dt);
+      c.rot = damp(c.rot, (c.tx - c.x) * 0.15, 8, dt);
+      c.el.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.s}) rotate(${c.rot}deg)`;
+    }
+    for (const c of flights) {            // released records finishing their flight
+      c.x = damp(c.x, c.tx, 14, dt); c.y = damp(c.y, c.ty, 14, dt); c.s = damp(c.s, c.ts, 12, dt);
+      c.el.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.s})`;
+    }
+    spinSpeed = damp(spinSpeed, state.playing ? 200 : 0, state.playing ? 3 : 1.6, dt);   // 33 1/3 rpm = 200 deg/s
+    spinAngle = (spinAngle + spinSpeed * dt) % 360;
+    els.spin.style.transform = `rotate(${spinAngle}deg)`;
+    dropY = damp(dropY, 0, 9, dt);
+    els.discWrap.style.transform = `translateY(${dropY.toFixed(2)}px)`;
+    els.discWrap.style.opacity = Math.min(1, 1 + dropY / 70 + 0.3);
+    placeTag();
+    tvTimer += dt; if (tvTimer > 1 / 15) { drawTv(tvTimer); tvTimer = 0; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------------- SoundCloud ---------------- */
+  async function loadPlaylist(url) {
+    setStatus("Pulling records from SoundCloud…");
+    takeOffDeck(true);
+    state.sounds = []; state.fillTries = 0;
+    buildShelf();
+    let widgetSrc = url;
+    try {
+      const r = await fetch("https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(url));
+      if (!r.ok) throw new Error(r.status);
+      const o = await r.json();
+      const m = (o.title || "").match(/^(.*) by (.*)$/);
+      state.title = m ? m[1] : (o.title || "Record Room");
+      state.by = o.author_name || (m && m[2]) || "";
+      const src = (o.html || "").match(/src="([^"]+)"/);
+      if (src) { const inner = new URL(src[1].replace(/&amp;/g, "&")).searchParams.get("url"); if (inner) widgetSrc = inner; }
+    } catch {
+      setStatus("Couldn't find that playlist. Check the link is public and starts with https://soundcloud.com/", true);
+      return;
+    }
+    document.title = state.title + " · Record Room";
+    const params = new URLSearchParams({ url: widgetSrc, auto_play: "false", visual: "false", color: "#e8879f", hide_related: "true",
+      show_comments: "false", show_reposts: "false", show_teaser: "false", sharing: "false", buying: "false", download: "false" });
+    els.host.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    iframe.title = "SoundCloud player"; iframe.allow = "autoplay; encrypted-media";
+    iframe.src = "https://w.soundcloud.com/player/?" + params;
+    els.host.appendChild(iframe);
+    const w = SC.Widget(iframe), E = SC.Widget.Events;
+    state.widget = w;
+    w.bind(E.READY, () => fetchSounds());
+    w.bind(E.PLAY, onPlay);
+    w.bind(E.PAUSE, () => setPlaying(false));
+    w.bind(E.FINISH, () => { setPlaying(false); if (!els.auto.checked) state.finished = true; });
+    w.bind(E.ERROR, () => setStatus("SoundCloud couldn't play that track. It may be blocked from embedding.", true));
+    w.bind(E.PLAY_PROGRESS, p => { state.rel = p.relativePosition || 0; state.pos = p.currentPosition || 0; });
+    store.set("vinylroom:url", url);
+  }
+  function fetchSounds() {
+    const w = state.widget;
+    w.getSounds(list => {
+      if (state.widget !== w) return;
+      const prevMissing = state.sounds.filter(s => !s.title).length, prevLen = state.sounds.length;
+      state.sounds = list || [];
+      const missing = state.sounds.filter(s => !s.title).length;
+      if (!state.sounds.length) {
+        if (state.fillTries++ < 12) { setTimeout(() => state.widget === w && fetchSounds(), 700); return; }
+        setStatus("SoundCloud found this playlist but won't hand over its tracks. It's empty, private, or the uploader turned off embedding. Try another link.", true);
+        return;
+      }
+      if (prevLen !== state.sounds.length || prevMissing !== missing) buildShelf();
+      const extra = state.sounds.length > MAX_RECORDS ? ` The shelf holds the first ${MAX_RECORDS}.` : "";
+      setStatus((missing ? `Loading sleeves… ${state.sounds.length - missing} of ${state.sounds.length}.` : `${state.sounds.length} records on the shelf.`) + extra);
+      if (missing && state.fillTries++ < 20) setTimeout(() => state.widget === w && fetchSounds(), 1500);
+    });
+  }
+  function onPlay() {
+    state.widget.getCurrentSoundIndex(idx => {
+      if (idx !== state.current) {
+        if (els.auto.checked && state.current >= 0 && state.sounds[idx]) { putOnDeck(idx); return; }
+        state.widget.pause(); return;
+      }
+      state.widget.getCurrentSound(s => { if (s && s.duration) state.duration = s.duration; });
+      state.finished = false; setPlaying(true);
+    });
+  }
+
+  els.form.addEventListener("submit", e => {
+    e.preventDefault();
+    const url = els.url.value.trim();
+    if (!/^https?:\/\/(www\.|m\.|on\.)?soundcloud\.com\//i.test(url)) { setStatus("That doesn't look like a SoundCloud link. It should start with https://soundcloud.com/", true); return; }
+    loadPlaylist(url);
+  });
+  const qs = new URLSearchParams(location.search).get("url");
+  const start = qs || store.get("vinylroom:url") || DEFAULT_URL;
+  els.url.value = start;
+  document.fonts.load("900 20px Chivo").finally(() => loadPlaylist(start));
+  window.__room = { state, get recs() { return recs; }, putOnDeck, get carried() { return carried; } };   // for debugging
+})();
+</script>
+</body>
+</html>
